@@ -29,7 +29,7 @@ const WATERMARK_KEY = 'tunnelvision_summary_watermark';
  * Get the last-summarized message ID watermark for the current chat.
  * @returns {number} The message ID after which no summary has covered, or -1 if none.
  */
-function getWatermark() {
+export function getWatermark() {
     const context = getContext();
     const val = context.chatMetadata?.[WATERMARK_KEY];
     return typeof val === 'number' ? val : -1;
@@ -39,7 +39,7 @@ function getWatermark() {
  * Set the last-summarized message ID watermark for the current chat.
  * @param {number} messageId
  */
-function setWatermark(messageId) {
+export function setWatermark(messageId) {
     const context = getContext();
     context.chatMetadata[WATERMARK_KEY] = messageId;
 }
@@ -68,9 +68,13 @@ export async function hideSummarizedMessages(messagesBack, overrideStart, overri
         hideStart = overrideStart;
         hideEnd = overrideEnd;
     } else if (typeof messagesBack === 'number' && messagesBack > 0) {
-        // AI-provided range
-        hideEnd = currentMsgId - 1; // Don't hide the current exchange
-        hideStart = Math.max(0, currentMsgId - messagesBack);
+        // AI-provided range: hide OLD messages that the summary now makes redundant.
+        // The summary covers the last N messages, so those should stay visible.
+        // Hide everything BEFORE them (from after the last watermark up to the
+        // start of the recent window).
+        const watermark = getWatermark();
+        hideStart = Math.max(1, watermark < 0 ? 1 : watermark + 1);
+        hideEnd = Math.max(0, currentMsgId - messagesBack - 1);
     } else {
         // Fallback: use watermark
         const watermark = getWatermark();
@@ -118,7 +122,7 @@ export async function hideSummarizedMessages(messagesBack, overrideStart, overri
  * @param {string} bookName
  * @returns {string|null} Node ID of the Summaries category, or null if no tree
  */
-function ensureSummariesNode(bookName) {
+export function ensureSummariesNode(bookName) {
     let tree = getTree(bookName);
     if (!tree || !tree.root) {
         // No tree exists yet -- create a minimal one so summaries have a home

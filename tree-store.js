@@ -319,6 +319,12 @@ export const SETTING_DEFAULTS = {
     sidecarPostGenWriter: false,
     sidecarWriterContextMessages: 15,
     sidecarWriterMaxOps: 5,
+    // Post-turn processor (tracker updates, fact extraction, scene archiving)
+    postTurnEnabled: false,
+    postTurnCooldown: 1,
+    postTurnUpdateTrackers: true,
+    postTurnExtractFacts: true,
+    postTurnSceneArchive: true,
     // Per-lorebook permissions: { bookName: 'read_write' | 'read_only' | 'write_only' }
     bookPermissions: {},
     // Per-lorebook injection mode: { bookName: 'sidecar' | 'native' }

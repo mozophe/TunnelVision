@@ -29,6 +29,7 @@ import { bindUIEvents, refreshUI } from './ui-controller.js';
 import { initActivityFeed } from './activity-feed.js';
 import { initCommands } from './commands.js';
 import { initAutoSummary } from './auto-summary.js';
+import { initPostTurnProcessor } from './post-turn-processor.js';
 import { runSidecarRetrieval } from './sidecar-retrieval.js';
 import { runSidecarWriter } from './sidecar-writer.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
@@ -71,6 +72,9 @@ async function init() {
 
     // Wire up auto-summary interval tracking
     initAutoSummary();
+
+    // Wire up post-turn processor (tracker updates, fact extraction, scene archiving)
+    initPostTurnProcessor();
 
     // Inject condition editor into ST's base lorebook editor
     initWIConditionInjector();
@@ -782,30 +786,15 @@ function convertToolChoiceToAnthropicFormat(toolChoice) {
  * Claude sees tools, makes tool calls + "..." text, the calls get ignored,
  * and "..." becomes the visible output. By setting tool_choice to "none" on
  * the final pass, we force the model to write narrative instead.
+ *
+ * NOTE: We intentionally do NOT convert tools/tool_choice to Anthropic format
+ * here. ST's server-side backend (chat-completions.js) already handles
+ * OpenAI→Anthropic conversion for both tool definitions and tool_choice.
+ * Doing it client-side would cause double-wrapping (e.g. tool_choice becomes
+ * { type: { type: "auto" } }) and strip tools from ST's server-side filter.
  */
 function onChatCompletionSettingsReady(data) {
     if (!_generationInProgress) return;
-
-    // ── Anthropic format conversion ──────────────────────────────────
-    // ST's ToolManager registers tools in OpenAI function-calling format
-    // ({ type: "function", function: { ... } }). When the active backend
-    // is Anthropic, convert them to the Messages API format so the request
-    // doesn't get rejected with an "invalid input tag" error.
-    if (data.tools?.length && isAnthropicApi(data)) {
-        const hasOpenAIWrapped = data.tools.some(t => t?.type === 'function' && t.function);
-        if (hasOpenAIWrapped) {
-            data.tools = data.tools.map(convertToolToAnthropicFormat);
-            if (data.tool_choice !== undefined) {
-                const converted = convertToolChoiceToAnthropicFormat(data.tool_choice);
-                if (converted === undefined) {
-                    delete data.tool_choice;
-                } else {
-                    data.tool_choice = converted;
-                }
-            }
-            console.log(`[TunnelVision] Converted ${data.tools.length} tool(s) from OpenAI to Anthropic format`);
-        }
-    }
 
     // ── Final-pass tool stripping ────────────────────────────────────
     const recurseLimit = ToolManager.RECURSE_LIMIT ?? 5;

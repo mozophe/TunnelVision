@@ -1,11 +1,15 @@
 /**
  * TunnelVision Slash Commands
  * Registers /tv-* slash commands for forcing tool actions.
- * Uses generateQuietPrompt for silent tool execution — no visible messages, no narrative output.
+ *
+ * Commands that can be executed directly (remember, merge with UIDs) call tool
+ * action functions without involving an LLM. Commands that need LLM reasoning
+ * (search, summarize, forget-by-name, split) use generateQuietPrompt and
+ * validate the result before reporting success.
  *
  * Commands:
  *   /tv-search [query]     — Force a lorebook search
- *   /tv-remember [content] — Force saving to memory (detects schema design requests)
+ *   /tv-remember [content] — Force saving to memory (direct action, no LLM needed)
  *   /tv-summarize [title]  — Force a scene summary
  *   /tv-forget [name]      — Force forgetting an entry
  *   /tv-merge [entries]    — Force merging entries
@@ -22,8 +26,13 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandArgument, ARGUMENT_TYPE } from '../../../slash-commands/SlashCommandArgument.js';
 import { getSettings, getSelectedLorebook } from './tree-store.js';
-import { getActiveTunnelVisionBooks } from './tool-registry.js';
+import { getActiveTunnelVisionBooks, resolveTargetBook } from './tool-registry.js';
 import { ingestChatMessages } from './tree-builder.js';
+import { createEntry } from './entry-manager.js';
+import { getDefinition as getRememberDef } from './tools/remember.js';
+import { getDefinition as getSummarizeDef } from './tools/summarize.js';
+import { getDefinition as getForgetDef } from './tools/forget.js';
+import { getDefinition as getMergeSplitDef } from './tools/merge-split.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -64,7 +73,7 @@ function registerSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'tv-remember',
         callback: wrapCallback(handleRemember),
-        helpString: 'Force saving content to TunnelVision memory. Detects schema/tracker design requests.',
+        helpString: 'Save content to TunnelVision memory. Calls the tool action directly — no LLM needed.',
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
                 description: 'Content to remember',
@@ -180,7 +189,7 @@ function wrapCallback(handler) {
 }
 
 // ---------------------------------------------------------------------------
-// Command handlers
+// Command handlers — direct action where possible, LLM fallback otherwise
 // ---------------------------------------------------------------------------
 
 async function handleSearch(_namedArgs, unnamedArg, { activeBooks }) {
@@ -189,18 +198,63 @@ async function handleSearch(_namedArgs, unnamedArg, { activeBooks }) {
     const prompt = buildCommandPrompt({ command: 'search', arg: query }, getContextMessages(), activeBooks, targetLorebook);
 
     toastr.info('Searching lorebook...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Search complete.', 'TunnelVision');
+    const result = await generateQuietPrompt({ quietPrompt: prompt });
+    if (result) {
+        toastr.success('Search complete.', 'TunnelVision');
+    } else {
+        toastr.warning('Search returned no results. The model may not have called the tool.', 'TunnelVision');
+    }
 }
 
+/**
+ * Remember handler — calls the tool action directly for simple content.
+ * Only falls back to LLM for schema/tracker design requests that need creativity.
+ */
 async function handleRemember(_namedArgs, unnamedArg, { activeBooks }) {
     const targetLorebook = resolveCurrentLorebook(activeBooks);
-    const content = String(unnamedArg || '').trim() || 'Remember important details from the recent conversation';
-    const prompt = buildCommandPrompt({ command: 'remember', arg: content }, getContextMessages(), activeBooks, targetLorebook);
+    const content = String(unnamedArg || '').trim();
+
+    if (!content) {
+        toastr.warning('Usage: /tv-remember <content to save>', 'TunnelVision');
+        return;
+    }
+
+    // Schema/tracker design requests need LLM creativity
+    const isSchemaRequest = /\b(design|schema|track(er|ing)?|template|format|struct(ure)?)\b/i.test(content);
+    if (isSchemaRequest) {
+        const prompt = buildCommandPrompt({ command: 'remember', arg: content }, getContextMessages(), activeBooks, targetLorebook);
+        toastr.info('Designing tracker schema...', 'TunnelVision');
+        const result = await generateQuietPrompt({ quietPrompt: prompt });
+        if (result) {
+            toastr.success('Tracker schema saved.', 'TunnelVision');
+        } else {
+            toastr.warning('Schema design may have failed — check the lorebook.', 'TunnelVision');
+        }
+        return;
+    }
+
+    // Direct action — no LLM needed
+    const { book: lorebook, error } = resolveTargetBook(
+        targetLorebook || (activeBooks.length === 1 ? activeBooks[0] : undefined),
+        { checkWrite: true },
+    );
+    if (error) {
+        toastr.error(error, 'TunnelVision');
+        return;
+    }
 
     toastr.info('Saving to memory...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Memory saved.', 'TunnelVision');
+    try {
+        const result = await createEntry(lorebook, {
+            content: content,
+            comment: content.length > 60 ? content.substring(0, 57) + '...' : content,
+            keys: [],
+        });
+        toastr.success(`Saved: "${result.comment}" (UID ${result.uid})`, 'TunnelVision');
+    } catch (e) {
+        console.error('[TunnelVision] /tv-remember direct action failed:', e);
+        toastr.error(`Failed to save: ${e.message}`, 'TunnelVision');
+    }
 }
 
 async function handleSummarize(_namedArgs, unnamedArg, { activeBooks }) {
@@ -209,8 +263,12 @@ async function handleSummarize(_namedArgs, unnamedArg, { activeBooks }) {
     const prompt = buildCommandPrompt({ command: 'summarize', arg: title }, getContextMessages(), activeBooks, targetLorebook);
 
     toastr.info('Creating summary...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Summary created.', 'TunnelVision');
+    const result = await generateQuietPrompt({ quietPrompt: prompt });
+    if (result) {
+        toastr.success('Summary created.', 'TunnelVision');
+    } else {
+        toastr.warning('Summary may have failed — check the lorebook.', 'TunnelVision');
+    }
 }
 
 async function handleForget(_namedArgs, unnamedArg, { activeBooks }) {
@@ -219,8 +277,12 @@ async function handleForget(_namedArgs, unnamedArg, { activeBooks }) {
     const prompt = buildCommandPrompt({ command: 'forget', arg: name }, getContextMessages(), activeBooks, targetLorebook);
 
     toastr.info('Forgetting entry...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Entry forgotten.', 'TunnelVision');
+    const result = await generateQuietPrompt({ quietPrompt: prompt });
+    if (result) {
+        toastr.success('Entry forgotten.', 'TunnelVision');
+    } else {
+        toastr.warning('Forget may have failed — the model may not have called the tool.', 'TunnelVision');
+    }
 }
 
 async function handleMerge(_namedArgs, unnamedArg, { activeBooks }) {
@@ -229,8 +291,12 @@ async function handleMerge(_namedArgs, unnamedArg, { activeBooks }) {
     const prompt = buildCommandPrompt({ command: 'merge', arg: target }, getContextMessages(), activeBooks, targetLorebook);
 
     toastr.info('Merging entries...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Entries merged.', 'TunnelVision');
+    const result = await generateQuietPrompt({ quietPrompt: prompt });
+    if (result) {
+        toastr.success('Merge complete.', 'TunnelVision');
+    } else {
+        toastr.warning('Merge may have failed — the model may not have called the tool. Check the lorebook.', 'TunnelVision');
+    }
 }
 
 async function handleSplit(_namedArgs, unnamedArg, { activeBooks }) {
@@ -239,8 +305,12 @@ async function handleSplit(_namedArgs, unnamedArg, { activeBooks }) {
     const prompt = buildCommandPrompt({ command: 'split', arg: target }, getContextMessages(), activeBooks, targetLorebook);
 
     toastr.info('Splitting entry...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Entry split.', 'TunnelVision');
+    const result = await generateQuietPrompt({ quietPrompt: prompt });
+    if (result) {
+        toastr.success('Entry split.', 'TunnelVision');
+    } else {
+        toastr.warning('Split may have failed — the model may not have called the tool. Check the lorebook.', 'TunnelVision');
+    }
 }
 
 async function handleIngestCommand(_namedArgs, unnamedArg, { activeBooks }) {
@@ -327,22 +397,13 @@ function buildCommandPrompt({ command, arg }, contextMessages, activeBooks, targ
         }
         case 'remember': {
             const content = arg || 'Remember important details from the recent conversation';
-            const isSchemaRequest = /\b(design|schema|track(er|ing)?|template|format|struct(ure)?)\b/i.test(content);
-            if (isSchemaRequest) {
-                return (
-                    `[INSTRUCTION: You MUST call TunnelVision_Remember this turn. ` +
-                    lorebookInstruction +
-                    `The user wants you to design a tracker schema. Based on their request: "${content}" - ` +
-                    `propose a well-structured format using headers, bullet points, and key:value pairs that will be easy to update each turn with TunnelVision_Update. ` +
-                    `Include placeholder values that demonstrate the format. Make it comprehensive but organized. ` +
-                    `Save it with a clear "[Tracker]" prefix in the title.]`
-                );
-            }
-
             return (
                 `[INSTRUCTION: You MUST call TunnelVision_Remember this turn. ` +
                 lorebookInstruction +
-                `Save the following to memory with explicit lorebook, title, and content fields: "${content}".]`
+                `The user wants you to design a tracker schema. Based on their request: "${content}" - ` +
+                `propose a well-structured format using headers, bullet points, and key:value pairs that will be easy to update each turn with TunnelVision_Update. ` +
+                `Include placeholder values that demonstrate the format. Make it comprehensive but organized. ` +
+                `Save it with a clear "[Tracker]" prefix in the title.]`
             );
         }
         case 'search': {

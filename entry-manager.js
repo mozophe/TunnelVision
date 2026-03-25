@@ -516,3 +516,230 @@ function findNodeContainingUid(node, uid) {
     }
     return null;
 }
+
+// ─── Utilities required by post-turn-processor & summary-hierarchy ───
+
+/**
+ * Build a uid → entry map from a lorebook entries object.
+ * @param {Object} entries - Lorebook entries map (key → entry object)
+ * @returns {Map<number, Object>}
+ */
+export function buildUidMap(entries) {
+    const map = new Map();
+    if (!entries) return map;
+    for (const key of Object.keys(entries)) {
+        const e = entries[key];
+        if (e?.uid != null) map.set(e.uid, e);
+    }
+    return map;
+}
+
+/**
+ * Parse a JSON object from LLM output, stripping markdown fences and preamble.
+ * @param {string} text - Raw LLM response
+ * @param {{ type?: 'object'|'array' }} [opts]
+ * @returns {Object|Array|null}
+ */
+export function parseJsonFromLLM(text, opts = {}) {
+    if (!text) return null;
+    // Strip markdown code fences
+    let cleaned = text.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '');
+    // Find the first { or [ depending on expected type
+    const opener = opts.type === 'array' ? '[' : '{';
+    const closer = opts.type === 'array' ? ']' : '}';
+    const start = cleaned.indexOf(opener);
+    if (start < 0) return null;
+    // Find matching closer (simple depth tracking)
+    let depth = 0;
+    for (let i = start; i < cleaned.length; i++) {
+        if (cleaned[i] === opener) depth++;
+        else if (cleaned[i] === closer) depth--;
+        if (depth === 0) {
+            try {
+                return JSON.parse(cleaned.substring(start, i + 1));
+            } catch {
+                return null;
+            }
+        }
+    }
+    return null;
+}
+
+// ─── Entry temporal metadata (creation/update timestamps per entry) ──
+
+const _entryTemporal = new Map(); // key: `${bookName}:${uid}`
+
+/**
+ * Record temporal metadata for an entry (creation or update timestamp).
+ * @param {string} bookName
+ * @param {number} uid
+ * @param {{ created?: number, updated?: number, source?: string }} meta
+ */
+export function recordEntryTemporal(bookName, uid, meta) {
+    const key = `${bookName}:${uid}`;
+    const existing = _entryTemporal.get(key) || {};
+    _entryTemporal.set(key, { ...existing, ...meta });
+}
+
+/**
+ * Get temporal metadata for an entry.
+ * @param {string} bookName
+ * @param {number} uid
+ * @returns {{ created?: number, updated?: number, source?: string }|null}
+ */
+export function getEntryTemporal(bookName, uid) {
+    return _entryTemporal.get(`${bookName}:${uid}`) || null;
+}
+
+// ─── Entry version tracking (simple history for undo/audit) ──────────
+
+const _entryVersions = new Map(); // key: `${bookName}:${uid}` → Array
+
+/**
+ * Get version history for an entry.
+ * @param {string} bookName
+ * @param {number} uid
+ * @returns {Array<{ content: string, comment: string, timestamp: number }>}
+ */
+export function getEntryVersions(bookName, uid) {
+    return _entryVersions.get(`${bookName}:${uid}`) || [];
+}
+
+/**
+ * Record a version snapshot for an entry (call before updating).
+ * @param {string} bookName
+ * @param {number} uid
+ * @param {{ content: string, comment: string }} snapshot
+ */
+export function recordEntryVersion(bookName, uid, snapshot) {
+    const key = `${bookName}:${uid}`;
+    const versions = _entryVersions.get(key) || [];
+    versions.push({ ...snapshot, timestamp: Date.now() });
+    // Keep last 10 versions
+    if (versions.length > 10) versions.shift();
+    _entryVersions.set(key, versions);
+}
+
+// ─── Persistence helper ─────────────────────────────────────────────
+
+/**
+ * Persist world info data for a book (wrapper around saveWorldInfo).
+ * @param {string} bookName
+ * @param {Object} bookData
+ */
+export async function persistWorldInfo(bookName, bookData) {
+    await saveWorldInfo(bookName, bookData, true);
+}
+
+// ─── Turn-scoped entry count (for rate limiting tool calls per turn) ─
+
+let _turnEntryCount = 0;
+
+export function resetTurnEntryCount() {
+    _turnEntryCount = 0;
+}
+
+export function getTurnEntryCount() {
+    return _turnEntryCount;
+}
+
+export function incrementTurnEntryCount() {
+    return ++_turnEntryCount;
+}
+
+// ─── Dirty cache invalidation ────────────────────────────────────────
+
+/**
+ * Invalidate any dirty/stale WI caches. Clears the entire WI cache.
+ * Called at the start of each generation to ensure fresh data.
+ */
+export function invalidateDirtyWorldInfoCache() {
+    _wiCache.clear();
+}
+
+// ─── HTML escaping ───────────────────────────────────────────────────
+
+/**
+ * Escape HTML special characters for safe rendering.
+ * @param {string} str
+ * @returns {string}
+ */
+export function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// ─── Entry turn index + supersedes tracking ─────────────────────────
+
+const _entryTurnIndex = new Map(); // key: `${bookName}:${uid}` → turn number
+const _entrySupersedes = new Map(); // key: `${bookName}:${uid}` → superseded uid
+
+export function getEntryTurnIndex(bookName, uid) {
+    return _entryTurnIndex.get(`${bookName}:${uid}`) ?? -1;
+}
+
+export function setEntryTurnIndex(bookName, uid, turn) {
+    _entryTurnIndex.set(`${bookName}:${uid}`, turn);
+}
+
+export function setEntrySupersedes(bookName, uid, supersededUid) {
+    _entrySupersedes.set(`${bookName}:${uid}`, supersededUid);
+}
+
+export function getEntrySupersedes(bookName, uid) {
+    return _entrySupersedes.get(`${bookName}:${uid}`) ?? null;
+}
+
+// ─── Prompt constants for LLM-driven operations ─────────────────────
+
+export const KEYWORD_RULES = `Keywords rules:
+- Provide 3-8 specific, searchable keywords
+- Include character names, locations, objects, and themes mentioned
+- Prefer concrete nouns over abstract concepts
+- Include temporal markers if the event has time significance`;
+
+export const SUMMARY_STYLE_RULES = `Summary style rules:
+- Write in third person, past tense
+- Be specific about WHO did WHAT and WHY
+- Include emotional beats and character reactions
+- Note any changes to relationships, status, or world state
+- Keep it concise but information-dense (aim for 100-200 words)`;
+
+export const FACT_EXTRACTION_PROMPT = `You are a memory curator for an ongoing roleplay. Extract discrete, reusable facts from the conversation below.
+
+For each fact, provide:
+- title: A short, descriptive label (e.g. "Elena's fear of fire", "Tavern location")
+- content: The factual information, written in third person
+- keys: 3-5 searchable keywords
+- significance: "low" | "medium" | "high"
+
+Only extract facts that would be useful to recall in future scenes. Skip transient dialogue, greetings, and meta-commentary.
+
+{{KEYWORD_RULES}}
+
+Recent conversation:
+{{CONTEXT}}
+
+Respond with ONLY a JSON array of fact objects (no markdown, no code fences).`;
+
+/**
+ * Build a keyword array for a summary entry.
+ * @param {{ participants?: string[], arc?: string, when?: string }} parsed
+ * @param {string[]} participants
+ * @param {string} significance
+ * @returns {string[]}
+ */
+export function buildSummaryKeys(parsed, participants = [], significance = 'moderate') {
+    const keys = [];
+    if (participants?.length) keys.push(...participants);
+    if (parsed?.arc) keys.push(parsed.arc);
+    if (parsed?.when) keys.push(parsed.when);
+    if (significance) keys.push(significance);
+    // Deduplicate
+    return [...new Set(keys.filter(Boolean))];
+}

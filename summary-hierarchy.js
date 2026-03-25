@@ -18,8 +18,8 @@ import { generateAnalytical } from './agent-utils.js';
 import { createEntry, getCachedWorldInfo, parseJsonFromLLM, buildSummaryKeys, findEntryByUid, KEYWORD_RULES, SUMMARY_STYLE_RULES } from './entry-manager.js';
 import {
     getTree, saveTree, createTreeNode, addEntryToNode, findNodeById,
-    ensureSummariesNode,
 } from './tree-store.js';
+import { ensureSummariesNode } from './tools/summarize.js';
 import { addBackgroundEvent } from './background-events.js';
 
 // ── Constants ────────────────────────────────────────────────────
