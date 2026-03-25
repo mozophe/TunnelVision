@@ -326,9 +326,9 @@ async function handleRemember(_namedArgs, unnamedArg, { activeBooks }) {
     const bookName = resolveBook(activeBooks);
     if (!bookName) return;
 
-    const content = String(unnamedArg || '').trim();
-    if (!content) {
-        toastr.warning('Usage: /tv-remember <content to save>', 'TunnelVision');
+    const hint = String(unnamedArg || '').trim();
+    if (!hint) {
+        toastr.warning('Usage: /tv-remember <what to remember>', 'TunnelVision');
         return;
     }
 
@@ -338,53 +338,45 @@ async function handleRemember(_namedArgs, unnamedArg, { activeBooks }) {
         return;
     }
 
-    // Check if this looks like a tracker/schema design request
-    const isSchemaRequest = /\b(design|schema|track(er|ing)?|template|format|struct(ure)?)\b/i.test(content);
+    const isSchemaRequest = /\b(design|schema|track(er|ing)?|template|format|struct(ure)?)\b/i.test(hint);
+    const messageCount = getContextMessages();
+    const recentChat = getRecentChat(messageCount);
+    const storyCtx = getStoryContext();
+    const contextBlock = [storyCtx, recentChat].filter(Boolean).join('\n\n');
 
-    if (isSchemaRequest) {
-        toastr.info('Designing tracker schema...', 'TunnelVision');
+    toastr.info(isSchemaRequest ? 'Designing tracker schema...' : 'Creating memory entry...', 'TunnelVision');
 
-        const storyCtx = getStoryContext();
-        const prompt = `${storyCtx ? storyCtx + '\n\n' : ''}Design a tracker schema for a creative writing lorebook based on this request: "${content}"
+    const schemaInstructions = isSchemaRequest
+        ? `\nThe user wants a TRACKER — a structured schema for tracking state that changes over time.
+Design a well-structured format using headers, bullet points, and key:value pairs.
+Include placeholder values that demonstrate the format. Prefix the title with "[Tracker]".`
+        : '';
 
-Create a well-structured format using headers, bullet points, and key:value pairs that will be easy to update each turn.
-Include placeholder values that demonstrate the format. Make it comprehensive but organized.
+    const prompt = `${contextBlock ? contextBlock + '\n\n' : ''}The user wants to remember: "${hint}"
+${schemaInstructions}
+Based on the conversation above, create a lorebook entry that captures this information.
+Write in third person, factual style. Include relevant names, places, and details from the conversation.
 
 Return JSON:
 {
-  "title": "[Tracker] <descriptive title>",
-  "content": "<the full tracker schema with placeholders>"
+  "title": "<short descriptive title for the entry>",
+  "content": "<well-written third-person factual entry content>",
+  "keys": ["<keyword1>", "<keyword2>"]
 }`;
 
-        const response = await generateAnalytical({ prompt });
-        const parsed = parseJSON(response);
+    const response = await generateAnalytical({ prompt });
+    const parsed = parseJSON(response);
 
-        if (!parsed?.title || !parsed?.content) {
-            toastr.error('Failed to design tracker schema — could not parse LLM response.', 'TunnelVision');
-            return;
-        }
-
-        try {
-            const result = await createEntry(lorebook, {
-                content: parsed.content,
-                comment: parsed.title,
-                keys: [],
-            });
-            toastr.success(`Tracker saved: "${result.comment}" (UID ${result.uid})`, 'TunnelVision');
-        } catch (e) {
-            toastr.error(`Failed to save tracker: ${e.message}`, 'TunnelVision');
-        }
+    if (!parsed?.title || !parsed?.content) {
+        toastr.error('Failed to create entry — could not parse LLM response.', 'TunnelVision');
         return;
     }
 
-    // Simple content — save directly, no LLM needed
-    toastr.info('Saving to memory...', 'TunnelVision');
     try {
-        const title = content.length > 60 ? content.substring(0, 57) + '...' : content;
         const result = await createEntry(lorebook, {
-            content,
-            comment: title,
-            keys: [],
+            content: parsed.content,
+            comment: parsed.title,
+            keys: Array.isArray(parsed.keys) ? parsed.keys : [],
         });
         toastr.success(`Saved: "${result.comment}" (UID ${result.uid})`, 'TunnelVision');
     } catch (e) {
