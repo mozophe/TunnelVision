@@ -191,9 +191,12 @@ export async function revertInvalidSnapshots() {
 
     // Revert any snapshot whose key is no longer valid
     for (const key of turnSnapshots.keys()) {
-        const [msgId, msgHash] = key.split(':');
-        console.log(`[TunnelVision] revertInvalidSnapshots checking key=${key} msgId=${msgId} valid=${validHashes.has(key)}`);
-        if (msgId !== 'untracked' && !validHashes.has(key)) {
+        const parts = key.split(':');
+        const msgId = parts[0];
+        const valid = validHashes.has(key);
+        console.log(`[TunnelVision] revertInvalidSnapshots checking key=${key} msgId=${msgId} valid=${valid}`);
+        if (!valid) {
+            const msgHash = parts.slice(1).join(':');
             console.log(`[TunnelVision] Triggering autonomous snapshot reversion for missing message: ${msgId}`);
             await revertMessageSnapshots(msgId, msgHash);
         }
