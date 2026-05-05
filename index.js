@@ -1076,6 +1076,10 @@ async function cleanInvalidSidecarMemories() {
 
                     // Delete from lorebook
                     delete bookData.entries[key];
+                    if (bookData.originalData && Array.isArray(bookData.originalData.entries)) {
+                        const origIdx = bookData.originalData.entries.findIndex(x => x.uid === entry.uid);
+                        if (origIdx >= 0) bookData.originalData.entries.splice(origIdx, 1);
+                    }
                     changed = true;
                 }
             }
