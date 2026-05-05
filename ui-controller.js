@@ -1412,6 +1412,10 @@ async function onOpenTreeEditor() {
                 const wasTracked = isTrackerUid(bookName, uid);
                 entry.disable = !entry.disable;
                 await saveWorldInfo(bookName, bookData, true);
+                
+                // Update local lookup to ensure countActiveEntries stays correct
+                entryLookup[uid] = entry;
+
                 if (entry.disable) {
                     setTrackerUid(bookName, uid, false);
                 } else if (wasTracked || isTrackerTitle(entry.comment)) {
