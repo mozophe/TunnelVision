@@ -504,7 +504,8 @@ async function executeWriteOps(ops, reasoning = '') {
             let result;
             const lastMsg = getContext().chat[getContext().chat.length - 1];
             const msgId = lastMsg?.mesId;
-            const msgHash = lastMsg?.mes ? lastMsg.mes.substring(0, 100).length : 0;
+            // More unique fingerprint: combination of length and start of message
+            const msgHash = lastMsg?.mes ? `${lastMsg.mes.length}_${lastMsg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
             const commentSuffix = `[TV_SIDECAR:${msgId}:${msgHash}]`;
 
             if (op.type === 'remember') {

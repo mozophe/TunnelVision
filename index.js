@@ -141,7 +141,13 @@ async function init() {
 
     // Post-generation sidecar writer (remember/update after model responds)
     if (event_types.MESSAGE_RECEIVED) {
-        eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
+        eventSource.on(event_types.MESSAGE_RECEIVED, async (messageId, type) => {
+            // If swiped, cleanup old memories from the previous response
+            if (type === 'swipe') {
+                await cleanInvalidSidecarMemories();
+            }
+            await onMessageReceived(messageId, type);
+        });
     }
 
     // Clean up orphaned tool invocations when messages are deleted
