@@ -30,7 +30,7 @@ import { initActivityFeed } from './activity-feed.js';
 import { initCommands } from './commands.js';
 import { initAutoSummary } from './auto-summary.js';
 import { runSidecarRetrieval } from './sidecar-retrieval.js';
-import { runSidecarWriter } from './sidecar-writer.js';
+import { runSidecarWriter, revertMessageSnapshots } from './sidecar-writer.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
@@ -142,8 +142,15 @@ async function init() {
     // Post-generation sidecar writer (remember/update after model responds)
     if (event_types.MESSAGE_RECEIVED) {
         eventSource.on(event_types.MESSAGE_RECEIVED, async (messageId, type) => {
-            // If swiped, cleanup old memories from the previous response
+            // If swiped, cleanup old memories and revert updates from the previous response
             if (type === 'swipe') {
+                const context = getContext();
+                const lastMsg = context.chat[context.chat.length - 1];
+                if (lastMsg) {
+                    const msgId = lastMsg.mesId;
+                    const msgHash = lastMsg.mes ? `${lastMsg.mes.length}_${lastMsg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
+                    await revertMessageSnapshots(msgId, msgHash);
+                }
                 await cleanInvalidSidecarMemories();
             }
             await onMessageReceived(messageId, type);
@@ -152,8 +159,20 @@ async function init() {
 
     // Clean up orphaned tool invocations when messages are deleted
     if (event_types.MESSAGE_DELETED) {
-        eventSource.on(event_types.MESSAGE_DELETED, async () => {
+        eventSource.on(event_types.MESSAGE_DELETED, async (index) => {
             cleanOrphanedToolInvocations();
+            
+            // Try to revert via snapshot first (precise undo)
+            const context = getContext();
+            const msg = context.chat[index];
+            if (msg) {
+                const msgId = msg.mesId;
+                const msgHash = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
+                await revertMessageSnapshots(msgId, msgHash);
+            }
+
+            // Fallback: full scan for untracked ghosts
+            await new Promise(r => setTimeout(r, 100));
             await cleanInvalidSidecarMemories();
         });
     }

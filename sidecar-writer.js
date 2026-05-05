@@ -32,6 +32,124 @@ import { getDefinition as getForgetDef } from './tools/forget.js';
 import { getDefinition as getReorganizeDef } from './tools/reorganize.js';
 import { getDefinition as getMergeSplitDef } from './tools/merge-split.js';
 import { logSidecarWrite } from './activity-feed.js';
+import { saveSettingsDebounced } from '../../../../script.js';
+
+// ─── Turn Snapshots (for undos) ──────────────────────────────────
+
+/**
+ * Stores lorebook entry snapshots before they are modified by the sidecar.
+ * Allows reverting updates if a message is deleted or swiped.
+ * Keyed by "msgId:hash".
+ * @type {Map<string, Object>}
+ */
+const turnSnapshots = new Map();
+
+/**
+ * Take a snapshot of the state of entries about to be modified.
+ * @param {string} snapshotKey
+ * @param {WriteOp[]} ops
+ */
+async function takeSnapshots(snapshotKey, ops) {
+    const snapshots = {
+        createdUids: [], // UIDs of new entries created this turn (to be deleted)
+        modifiedEntries: {}, // Original state of entries updated/merged (to be restored)
+        treeState: {}, // Copy of tree root for each book (to be restored)
+    };
+
+    for (const op of ops) {
+        if (!op.lorebook) continue;
+        const bookData = await loadWorldInfo(op.lorebook);
+        if (!bookData?.entries) continue;
+
+        if (op.type === 'update' || op.type === 'merge' || op.type === 'forget' || op.type === 'split') {
+            const uids = op.type === 'merge' ? [op.keep_uid, op.remove_uid] : [op.uid];
+            for (const uid of uids) {
+                if (uid === undefined) continue;
+                const entry = findEntryByUid(bookData.entries, uid);
+                if (entry) {
+                    const key = `${op.lorebook}:${uid}`;
+                    if (!snapshots.modifiedEntries[key]) {
+                        snapshots.modifiedEntries[key] = JSON.parse(JSON.stringify(entry));
+                    }
+                }
+            }
+        }
+        
+        // Always snapshot the tree state if we might change it
+        if (!snapshots.treeState[op.lorebook]) {
+            const tree = getTree(op.lorebook);
+            if (tree?.root) {
+                snapshots.treeState[op.lorebook] = JSON.parse(JSON.stringify(tree.root));
+            }
+        }
+    }
+
+    turnSnapshots.set(snapshotKey, snapshots);
+    
+    // Prune old snapshots (keep last 50)
+    if (turnSnapshots.size > 50) {
+        const firstKey = turnSnapshots.keys().next().value;
+        turnSnapshots.delete(firstKey);
+    }
+}
+
+/**
+ * Exported for index.js to use during cleanup.
+ * Reverts any modifications made by the sidecar for a specific message.
+ */
+export async function revertMessageSnapshots(msgId, msgHash) {
+    const key = `${msgId}:${msgHash}`;
+    const snapshots = turnSnapshots.get(key);
+    if (!snapshots) return false;
+
+    console.log(`[TunnelVision] Reverting sidecar modifications for message ${msgId}...`);
+
+    // 1. Delete created entries
+    for (const item of snapshots.createdUids) {
+        const { bookName, uid } = item;
+        const bookData = await loadWorldInfo(bookName);
+        if (bookData?.entries) {
+            const entryKey = Object.keys(bookData.entries).find(k => bookData.entries[k].uid === uid);
+            if (entryKey) {
+                console.debug(`   - Deleting created entry: "${bookData.entries[entryKey].comment}" (UID ${uid})`);
+                delete bookData.entries[entryKey];
+                await saveWorldInfo(bookName, bookData, true);
+            }
+        }
+    }
+
+    // 2. Restore modified entries
+    const booksToSave = new Set();
+    for (const [idKey, originalEntry] of Object.entries(snapshots.modifiedEntries)) {
+        const [bookName, uid] = idKey.split(':');
+        const bookData = await loadWorldInfo(bookName);
+        if (bookData?.entries) {
+            const entryKey = Object.keys(bookData.entries).find(k => bookData.entries[k].uid === Number(uid));
+            if (entryKey) {
+                console.debug(`   - Restoring entry: UID ${uid} in "${bookName}"`);
+                bookData.entries[entryKey] = originalEntry;
+                booksToSave.add(bookName);
+            }
+        }
+    }
+    for (const bookName of booksToSave) {
+        const bookData = await loadWorldInfo(bookName);
+        await saveWorldInfo(bookName, bookData, true);
+    }
+
+    // 3. Restore tree states
+    for (const [bookName, originalRoot] of Object.entries(snapshots.treeState)) {
+        const tree = getTree(bookName);
+        if (tree) {
+            console.debug(`   - Restoring tree structure for "${bookName}"`);
+            tree.root = originalRoot;
+            saveTree(bookName, tree);
+        }
+    }
+
+    turnSnapshots.delete(key);
+    return true;
+}
 
 // ─── Recent Operations Buffer ────────────────────────────────────
 
@@ -468,6 +586,15 @@ async function executeWriteOps(ops, reasoning = '') {
     let succeeded = 0;
     let failed = 0;
 
+    // Generate snapshot key for this turn
+    const lastMsg = getContext().chat[getContext().chat.length - 1];
+    const msgId = lastMsg?.mesId;
+    const msgHash = lastMsg?.mes ? `${lastMsg.mes.length}_${lastMsg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
+    const snapshotKey = `${msgId}:${msgHash}`;
+
+    // Take snapshots before modifying anything
+    await takeSnapshots(snapshotKey, ops);
+
     // Lazily get tool definitions (they rebuild each call to pick up current book list)
     const rememberAction = getRememberDef().action;
     const updateAction = getUpdateDef().action;
@@ -582,6 +709,18 @@ async function executeWriteOps(ops, reasoning = '') {
             } else {
                 succeeded++;
                 results.push(`OK [${op.type}]: ${result}`);
+
+                // If this was a creation, record the UID for cleanup/undo
+                if (op.type === 'remember' || op.type === 'summarize') {
+                    const uidMatch = String(result).match(/\(UID (\d+)\)/);
+                    if (uidMatch) {
+                        const uid = Number(uidMatch[1]);
+                        const snapshots = turnSnapshots.get(snapshotKey);
+                        if (snapshots) {
+                            snapshots.createdUids.push({ bookName: op.lorebook, uid });
+                        }
+                    }
+                }
 
                 const opSummary = op.type === 'remember'
                     ? `"${(op.title || '').substring(0, 50)}"`
