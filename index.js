@@ -148,9 +148,8 @@ async function init() {
             const realMsgId = msg?.mesId;
 
             // If swiped, cleanup old memories and revert updates from the previous response
-            if (type === 'swipe' && realMsgId) {
-                const msgHash = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
-                await revertMessageSnapshots(realMsgId, msgHash);
+            if (type === 'swipe') {
+                await revertInvalidSnapshots();
                 await cleanInvalidSidecarMemories();
             }
             await onMessageReceived(realMsgId, type);
