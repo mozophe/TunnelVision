@@ -502,6 +502,11 @@ async function executeWriteOps(ops, reasoning = '') {
             }
 
             let result;
+            const lastMsg = getContext().chat[getContext().chat.length - 1];
+            const msgId = lastMsg?.mesId;
+            const msgHash = lastMsg?.mes ? lastMsg.mes.substring(0, 100).length : 0;
+            const commentSuffix = `[TV_SIDECAR:${msgId}:${msgHash}]`;
+
             if (op.type === 'remember') {
                 result = await rememberAction({
                     lorebook: op.lorebook,
@@ -509,6 +514,7 @@ async function executeWriteOps(ops, reasoning = '') {
                     content: op.content,
                     keys: op.keys,
                     node_id: op.target_node_id,
+                    comment_suffix: commentSuffix,
                 });
             } else if (op.type === 'update') {
                 result = await updateAction({
@@ -533,6 +539,7 @@ async function executeWriteOps(ops, reasoning = '') {
                     summary: op.summary,
                     participants: op.participants,
                     significance: op.significance,
+                    comment_suffix: commentSuffix,
                 });
             } else if (op.type === 'forget') {
                 result = await forgetAction({

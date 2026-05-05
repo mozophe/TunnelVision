@@ -269,8 +269,8 @@ When you notice related events forming a pattern or storyline, group them into "
                     comment: `[Summary] ${args.title}`,
                     keys,
                     nodeId: targetNodeId,
-                });
-                markAutoSummaryComplete();
+                    comment_suffix: args.comment_suffix,
+                });                markAutoSummaryComplete();
                 let response = `Summarized: "${args.title}" (UID ${result.uid}) → "${result.nodeLabel}" in "${lorebook}". Significance: ${significance}.`;
                 if (arcLabel) {
                     response += ` Arc: "${arcLabel}".`;

@@ -22,7 +22,7 @@ import { eventSource, event_types, extension_prompt_types, extension_prompt_role
 import { getContext } from '../../../st-context.js';
 import { ToolManager } from '../../../tool-calling.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { getSettings, isLorebookEnabled, setLorebookEnabled } from './tree-store.js';
+import { getSettings, isLorebookEnabled, setLorebookEnabled, getTree, removeEntryFromTree, saveTree } from './tree-store.js';
 import { preflightToolRuntimeState, registerTools } from './tool-registry.js';
 import { buildNotebookPrompt, resetNotebookWriteGuard } from './tools/notebook.js';
 import { bindUIEvents, refreshUI } from './ui-controller.js';
@@ -33,6 +33,7 @@ import { runSidecarRetrieval } from './sidecar-retrieval.js';
 import { runSidecarWriter } from './sidecar-writer.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names } from '../../../world-info.js';
+import { findEntryByUid } from './entry-manager.js';
 
 const EXTENSION_NAME = 'tunnelvision';
 const EXTENSION_FOLDER = `third-party/TunnelVision`;
@@ -145,7 +146,10 @@ async function init() {
 
     // Clean up orphaned tool invocations when messages are deleted
     if (event_types.MESSAGE_DELETED) {
-        eventSource.on(event_types.MESSAGE_DELETED, cleanOrphanedToolInvocations);
+        eventSource.on(event_types.MESSAGE_DELETED, async () => {
+            cleanOrphanedToolInvocations();
+            await cleanInvalidSidecarMemories();
+        });
     }
 
     // Refresh connection profile dropdown when profiles change
@@ -972,6 +976,70 @@ async function onMessageReceived(_messageId, type) {
  * @param {Object} settings
  */
 const ST_DEFAULT_RECURSE_LIMIT = 5;
+
+/**
+ * Remove any lorebook entries that were created based on messages
+ * that have since been deleted or swiped.
+ */
+async function cleanInvalidSidecarMemories() {
+    const context = getContext();
+    const chat = context.chat;
+    const activeBooks = getActiveTunnelVisionBooks();
+    if (activeBooks.length === 0) return;
+
+    // Build a set of currently valid message IDs and fingerprints
+    const validMessages = new Set();
+    const validFingerprints = new Set();
+    for (const msg of chat) {
+        if (msg.mesId !== undefined) {
+            validMessages.add(String(msg.mesId));
+            const finger = msg.mes ? msg.mes.substring(0, 100).length : 0;
+            validFingerprints.add(`${msg.mesId}:${finger}`);
+        }
+    }
+
+    for (const bookName of activeBooks) {
+        const bookData = await loadWorldInfo(bookName);
+        if (!bookData || !bookData.entries) continue;
+
+        let changed = false;
+        const entryKeys = Object.keys(bookData.entries);
+
+        for (const key of entryKeys) {
+            const entry = bookData.entries[key];
+            const comment = entry.comment || '';
+            
+            // Check for sidecar tag: [TV_SIDECAR:msgId:fingerprint]
+            const match = comment.match(/\[TV_SIDECAR:([^:]+):([^\]]+)\]/);
+            if (match) {
+                const msgId = match[1];
+                const finger = match[2];
+                const fullKey = `${msgId}:${finger}`;
+
+                // If message is gone OR its content has changed (swipe), invalidate memory
+                if (!validMessages.has(msgId) || !validFingerprints.has(fullKey)) {
+                    console.log(`[TunnelVision] Auto-cleaning invalid memory: "${comment}" (UID ${entry.uid}) in "${bookName}"`);
+                    
+                    // Remove from tree first
+                    const tree = getTree(bookName);
+                    if (tree) {
+                        removeEntryFromTree(tree.root, entry.uid);
+                        saveTree(bookName, tree);
+                    }
+
+                    // Delete from lorebook
+                    delete bookData.entries[key];
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            await saveWorldInfo(bookName, bookData, true);
+        }
+    }
+}
+
 function applyRecurseLimit(settings) {
     const limit = Number(settings.recurseLimit);
     if (!isFinite(limit) || limit < 1) {
