@@ -16,9 +16,10 @@
  */
 
 import { getContext } from '../../../st-context.js';
-import { loadWorldInfo, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
+import { loadWorldInfo, saveWorldInfo, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
 import {
     getTree,
+    saveTree,
     findNodeById,
     getAllEntryUids,
     getSettings,
@@ -175,6 +176,7 @@ export async function revertMessageSnapshots(msgId, msgHash) {
 export async function revertInvalidSnapshots() {
     const context = getContext();
     const chat = context.chat;
+    console.log(`[TunnelVision] revertInvalidSnapshots: turnSnapshots.size=${turnSnapshots.size}, chat.length=${chat?.length ?? 0}`);
     if (!chat || !turnSnapshots.size) return;
 
     // Build set of currently valid msgId:msgHash combinations
@@ -185,10 +187,12 @@ export async function revertInvalidSnapshots() {
             validHashes.add(`${msg.mesId}:${hash}`);
         }
     }
+    console.log(`[TunnelVision] revertInvalidSnapshots: ${validHashes.size} valid hashes from current chat`);
 
     // Revert any snapshot whose key is no longer valid
     for (const key of turnSnapshots.keys()) {
         const [msgId, msgHash] = key.split(':');
+        console.log(`[TunnelVision] revertInvalidSnapshots checking key=${key} msgId=${msgId} valid=${validHashes.has(key)}`);
         if (msgId !== 'untracked' && !validHashes.has(key)) {
             console.log(`[TunnelVision] Triggering autonomous snapshot reversion for missing message: ${msgId}`);
             await revertMessageSnapshots(msgId, msgHash);
