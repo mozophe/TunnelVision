@@ -45,6 +45,7 @@ import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 
 
 let currentLorebook = null;
+let activeEditorRefresh = null;
 
 function selectCurrentLorebook(bookName) {
     currentLorebook = bookName || null;
@@ -222,6 +223,11 @@ export function refreshUI() {
     const settings = getSettings();
     const globalEnabled = settings.globalEnabled !== false;
     syncSelectedLorebook();
+
+    // Trigger active editor refresh if open
+    if (activeEditorRefresh) {
+        activeEditorRefresh();
+    }
 
     $('#tv_global_enabled').prop('checked', globalEnabled);
     $('#tv_main_controls').toggle(globalEnabled);
@@ -1110,6 +1116,24 @@ async function onOpenTreeEditor() {
         renderMainPanel();
     }
 
+    // Automatic refresh logic
+    activeEditorRefresh = async () => {
+        const freshBookData = await loadWorldInfo(bookName);
+        entryLookup = buildEntryLookup(freshBookData);
+        // Sync tree in case it was modified externally
+        const freshTree = getTree(bookName);
+        if (freshTree) {
+            // Update the local tree reference's root
+            tree.root = freshTree.root;
+            // If the selected node no longer exists in the new tree, fall back to root
+            if (selectedNode && selectedNode.id !== '__unassigned__' && !findNodeById(tree.root, selectedNode.id)) {
+                selectedNode = tree.root;
+            }
+        }
+        renderTreeNodes();
+        renderMainPanel();
+    };
+
     function isRootNode(node) {
         return !!node && node.id === tree.root.id;
     }
@@ -1412,6 +1436,10 @@ async function onOpenTreeEditor() {
                 const wasTracked = isTrackerUid(bookName, uid);
                 entry.disable = !entry.disable;
                 await saveWorldInfo(bookName, bookData, true);
+                
+                // Update local lookup to ensure countActiveEntries stays correct
+                entryLookup[uid] = entry;
+
                 if (entry.disable) {
                     setTrackerUid(bookName, uid, false);
                 } else if (wasTracked || isTrackerTitle(entry.comment)) {
@@ -1731,12 +1759,16 @@ async function onOpenTreeEditor() {
     });
 
     // Show popup (blocks until user closes it)
-    await callGenericPopup($popup, POPUP_TYPE.DISPLAY, '', {
-        large: true,
-        wide: true,
-        allowVerticalScrolling: true,
-        allowHorizontalScrolling: false,
-    });
+    try {
+        await callGenericPopup($popup, POPUP_TYPE.DISPLAY, '', {
+            large: true,
+            wide: true,
+            allowVerticalScrolling: true,
+            allowHorizontalScrolling: false,
+        });
+    } finally {
+        activeEditorRefresh = null;
+    }
 
     // When popup closes, refresh sidebar UI
     loadLorebookUI(bookName);
