@@ -30,7 +30,7 @@ import { initActivityFeed } from './activity-feed.js';
 import { initCommands } from './commands.js';
 import { initAutoSummary } from './auto-summary.js';
 import { runSidecarRetrieval } from './sidecar-retrieval.js';
-import { runSidecarWriter, revertMessageSnapshots } from './sidecar-writer.js';
+import { runSidecarWriter, revertMessageSnapshots, revertInvalidSnapshots } from './sidecar-writer.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
