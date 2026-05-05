@@ -579,16 +579,17 @@ function parseWriteOps(response) {
  * Execute parsed write operations via tool action functions.
  * @param {WriteOp[]} ops
  * @param {string} [reasoning]
+ * @param {string|number} [messageId]
  * @returns {Promise<{succeeded: number, failed: number, results: string[]}>}
  */
-async function executeWriteOps(ops, reasoning = '') {
+async function executeWriteOps(ops, reasoning = '', messageId = null) {
     const results = [];
     let succeeded = 0;
     let failed = 0;
 
     // Generate snapshot key for this turn
     const lastMsg = getContext().chat[getContext().chat.length - 1];
-    const msgId = lastMsg?.mesId;
+    const msgId = messageId ?? lastMsg?.mesId ?? 'untracked';
     const msgHash = lastMsg?.mes ? `${lastMsg.mes.length}_${lastMsg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
     const snapshotKey = `${msgId}:${msgHash}`;
 
@@ -629,10 +630,6 @@ async function executeWriteOps(ops, reasoning = '') {
             }
 
             let result;
-            const lastMsg = getContext().chat[getContext().chat.length - 1];
-            const msgId = lastMsg?.mesId;
-            // More unique fingerprint: combination of length and start of message
-            const msgHash = lastMsg?.mes ? `${lastMsg.mes.length}_${lastMsg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
             const commentSuffix = `[TV_SIDECAR:${msgId}:${msgHash}]`;
 
             if (op.type === 'remember') {

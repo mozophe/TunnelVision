@@ -972,8 +972,8 @@ async function onGenerationStarted(type, opts, dryRun) {
  * Post-generation handler: run sidecar writer if enabled.
  * Fires after the chat model's response is received (MESSAGE_RECEIVED).
  */
-async function onMessageReceived(_messageId, type) {
-    console.debug(`[TunnelVision] MESSAGE_RECEIVED: messageId=${_messageId} type="${type}"`);
+async function onMessageReceived(messageId, type) {
+    console.debug(`[TunnelVision] MESSAGE_RECEIVED: messageId=${messageId} type="${type}"`);
     // Clear generation guards BEFORE the sidecar writer runs, so that lorebook
     // writes triggered by the writer do not get blocked by the generation guard.
     _generationInProgress = false;
@@ -988,7 +988,7 @@ async function onMessageReceived(_messageId, type) {
     if (!settings.sidecarPostGenWriter || settings.globalEnabled === false) return;
 
     try {
-        await runSidecarWriter();
+        await runSidecarWriter(messageId);
     } catch (err) {
         console.error('[TunnelVision] Sidecar post-gen writer error:', err);
     }
