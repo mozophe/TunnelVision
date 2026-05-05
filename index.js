@@ -1051,9 +1051,12 @@ async function cleanInvalidSidecarMemories() {
             if (msgId) {
                 const fullKey = `${msgId}:${finger}`;
 
-                // If message is gone OR its content has changed (swipe), invalidate memory
-                // Note: we only cleanup if msgId is NOT 'untracked'
-                if (msgId !== 'untracked' && (!validMessages.has(msgId) || !validFingerprints.has(fullKey))) {
+                // If message is gone OR its content has changed (swipe), invalidate memory.
+                // We are now aggressive: even if msgId is 'untracked', we check the fingerprint.
+                const isMessageValid = msgId === 'untracked' || validMessages.has(msgId);
+                const isFingerprintValid = validFingerprints.has(fullKey);
+
+                if (!isMessageValid || !isFingerprintValid) {
                     console.log(`[TunnelVision] Auto-cleaning invalid memory: "${comment.substring(0, 40)}..." (UID ${entry.uid}) in "${bookName}"`);
                     
                     // Remove from tree
