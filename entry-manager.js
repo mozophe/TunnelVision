@@ -73,7 +73,20 @@ export async function createEntry(bookName, { content, comment, keys, nodeId, tv
     newEntry.constant = false;
     newEntry.disable = false;
 
-    // Assign to tree node in memory BEFORE saving lorebook
+    // 1. Persist lorebook to disk FIRST (assigns final server-side UID)
+    await saveWorldInfo(bookName, bookData, true);
+    
+    // 2. Refresh the local reference to get the assigned UID
+    const freshBook = await loadWorldInfo(bookName);
+    const finalizedEntry = Object.values(freshBook.entries).find(e => 
+        e.comment === comment.trim() && e.content === content.trim()
+    );
+
+    if (!finalizedEntry) {
+        throw new Error('Failed to retrieve finalized entry after save.');
+    }
+
+    // 3. Assign to tree node using the FINAL UID
     let nodeLabel = 'Root';
     const tree = getTree(bookName);
     if (tree && tree.root) {
@@ -85,30 +98,20 @@ export async function createEntry(bookName, { content, comment, keys, nodeId, tv
                 nodeLabel = found.label;
             }
         }
-        addEntryToNode(targetNode, newEntry.uid);
-    } else {
-        nodeLabel = '(no tree)';
-    }
-
-    // Persist lorebook to disk (triggers WORLDINFO_UPDATED)
-    await saveWorldInfo(bookName, bookData, true);
-    
-    // FORCE SYNC: Tell SillyTavern to update its internal memory and UI
-    if (typeof window.renderWorldInfo === 'function') {
-        window.renderWorldInfo();
-    }
-    
-    // Save tree structure
-    if (tree) {
+        addEntryToNode(targetNode, finalizedEntry.uid);
         saveTree(bookName, tree);
     }
 
-    if (isTrackerTitle(newEntry.comment)) {
-        setTrackerUid(bookName, newEntry.uid, true);
+    // 4. Force SillyTavern UI to update
+    if (typeof window.renderWorldInfoList === 'function') window.renderWorldInfoList();
+    if (typeof window.renderWorldInfo === 'function') window.renderWorldInfo();
+
+    if (isTrackerTitle(finalizedEntry.comment)) {
+        setTrackerUid(bookName, finalizedEntry.uid, true);
     }
 
-    console.log(`[TunnelVision] Created entry "${comment}" (UID ${newEntry.uid}) in "${bookName}" → ${nodeLabel}`);
-    return { uid: newEntry.uid, comment: newEntry.comment, nodeLabel };
+    console.log(`[TunnelVision] Created entry "${comment}" (UID ${finalizedEntry.uid}) in "${bookName}" → ${nodeLabel}`);
+    return { uid: finalizedEntry.uid, comment: finalizedEntry.comment, nodeLabel };
 }
 
 /**
