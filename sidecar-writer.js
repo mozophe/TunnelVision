@@ -113,7 +113,18 @@ export async function revertMessageSnapshots(msgId, msgHash) {
             if (entryKey) {
                 console.debug(`   - Deleting created entry: "${bookData.entries[entryKey].comment}" (UID ${uid})`);
                 delete bookData.entries[entryKey];
+                
+                // Deep delete from SillyTavern's underlying array
+                if (bookData.originalData && Array.isArray(bookData.originalData.entries)) {
+                    const origIdx = bookData.originalData.entries.findIndex(x => x.uid === uid);
+                    if (origIdx >= 0) bookData.originalData.entries.splice(origIdx, 1);
+                }
+
                 await saveWorldInfo(bookName, bookData, true);
+                
+                // Force UI update so it vanishes from the native Lorebook instantly
+                if (typeof window.renderWorldInfoList === 'function') window.renderWorldInfoList();
+                if (typeof window.renderWorldInfo === 'function') window.renderWorldInfo();
             }
         }
     }
@@ -128,6 +139,15 @@ export async function revertMessageSnapshots(msgId, msgHash) {
             if (entryKey) {
                 console.debug(`   - Restoring entry: UID ${uid} in "${bookName}"`);
                 bookData.entries[entryKey] = originalEntry;
+                
+                // Deep restore to SillyTavern's underlying array
+                if (bookData.originalData && Array.isArray(bookData.originalData.entries)) {
+                    const origIdx = bookData.originalData.entries.findIndex(x => x.uid === Number(uid));
+                    if (origIdx >= 0) {
+                        bookData.originalData.entries[origIdx] = originalEntry;
+                    }
+                }
+                
                 booksToSave.add(bookName);
             }
         }
@@ -135,6 +155,7 @@ export async function revertMessageSnapshots(msgId, msgHash) {
     for (const bookName of booksToSave) {
         const bookData = await loadWorldInfo(bookName);
         await saveWorldInfo(bookName, bookData, true);
+        if (typeof window.renderWorldInfoList === 'function') window.renderWorldInfoList();
     }
 
     // 3. Restore tree states
@@ -149,6 +170,35 @@ export async function revertMessageSnapshots(msgId, msgHash) {
 
     turnSnapshots.delete(key);
     return true;
+}
+
+/**
+ * Scan all stored snapshots and revert any that belong to messages that are
+ * no longer in the chat (or have been modified via swiping).
+ * This completely decouples the undo logic from ST event arguments.
+ */
+export async function revertInvalidSnapshots() {
+    const context = getContext();
+    const chat = context.chat;
+    if (!chat || !turnSnapshots.size) return;
+
+    // Build set of currently valid msgId:msgHash combinations
+    const validHashes = new Set();
+    for (const msg of chat) {
+        if (msg.mesId !== undefined) {
+            const hash = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
+            validHashes.add(`${msg.mesId}:${hash}`);
+        }
+    }
+
+    // Revert any snapshot whose key is no longer valid
+    for (const key of turnSnapshots.keys()) {
+        const [msgId, msgHash] = key.split(':');
+        if (msgId !== 'untracked' && !validHashes.has(key)) {
+            console.log(`[TunnelVision] Triggering autonomous snapshot reversion for missing message: ${msgId}`);
+            await revertMessageSnapshots(msgId, msgHash);
+        }
+    }
 }
 
 // ─── Recent Operations Buffer ────────────────────────────────────

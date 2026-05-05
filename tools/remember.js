@@ -169,7 +169,7 @@ Save entries to the lorebook where they belong based on the descriptions above. 
                     comment: args.title,
                     keys: args.keys || [],
                     nodeId: args.node_id,
-                    tv_meta: args.tv_meta,
+                    tv_tracker: args.tv_tracker,
                 });
                 return `Saved memory: "${result.comment}" (UID ${result.uid}) → category "${result.nodeLabel}" in "${lorebook}".${dedupWarning}`;
             } catch (e) {
