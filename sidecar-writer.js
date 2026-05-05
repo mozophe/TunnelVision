@@ -831,6 +831,10 @@ export async function runSidecarWriter() {
         // Execute writes
         const { succeeded, failed, results } = await executeWriteOps(capped, reasoning);
 
+        // Explicitly refresh UI after all modifications are complete
+        const { refreshUI } = await import('./ui-controller.js');
+        refreshUI();
+
         const _writerModel = getSidecarModelLabel() || 'unknown';
         console.log(
             `[TunnelVision] Sidecar post-gen writer [${_writerModel}]: ${succeeded} succeeded, ${failed} failed out of ${capped.length} operations`,
