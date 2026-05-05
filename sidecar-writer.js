@@ -176,29 +176,35 @@ export async function revertMessageSnapshots(msgId, msgHash) {
 export async function revertInvalidSnapshots() {
     const context = getContext();
     const chat = context.chat;
-    console.log(`[TunnelVision] revertInvalidSnapshots: turnSnapshots.size=${turnSnapshots.size}, chat.length=${chat?.length ?? 0}`);
     if (!chat || !turnSnapshots.size) return;
 
     // Build set of currently valid msgId:msgHash combinations
     const validHashes = new Set();
     for (const msg of chat) {
+        const hash = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
         if (msg.mesId !== undefined) {
-            const hash = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
             validHashes.add(`${msg.mesId}:${hash}`);
+        } else if (hash !== '0') {
+            // Legacy chats: use content-hash-only key for fingerprint matching
+            validHashes.add(hash);
         }
     }
-    console.log(`[TunnelVision] revertInvalidSnapshots: ${validHashes.size} valid hashes from current chat`);
 
     // Revert any snapshot whose key is no longer valid
     for (const key of turnSnapshots.keys()) {
         const parts = key.split(':');
         const msgId = parts[0];
         const valid = validHashes.has(key);
-        console.log(`[TunnelVision] revertInvalidSnapshots checking key=${key} msgId=${msgId} valid=${valid}`);
         if (!valid) {
             const msgHash = parts.slice(1).join(':');
-            console.log(`[TunnelVision] Triggering autonomous snapshot reversion for missing message: ${msgId}`);
-            await revertMessageSnapshots(msgId, msgHash);
+            // Also check: the snapshot's content hash might match a current message's hash
+            // (e.g., when msgId is 'untracked', compare by hash alone)
+            const hashOnly = msgHash;
+            const hashMatches = msgId === 'untracked' && validHashes.has(hashOnly);
+            if (!hashMatches) {
+                console.log(`[TunnelVision] Reverting sidecar snapshot for message ${msgId}`);
+                await revertMessageSnapshots(msgId, msgHash);
+            }
         }
     }
 }

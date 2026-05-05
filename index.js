@@ -159,18 +159,14 @@ async function init() {
     // Clean up orphaned tool invocations when messages are deleted
     if (event_types.MESSAGE_DELETED) {
         eventSource.on(event_types.MESSAGE_DELETED, async (messageIndexOrId) => {
-            console.log(`[TunnelVision] MESSAGE_DELETED fired, arg=${messageIndexOrId} type=${typeof messageIndexOrId}`);
             cleanOrphanedToolInvocations();
 
             // ST passes chat.length (post-deletion) as the argument, not the deleted message's ID.
-            // This means we can't look up the deleted message directly — it's already gone.
             // Use revertInvalidSnapshots() which scans all snapshots against the current chat state.
-            console.log('[TunnelVision] MESSAGE_DELETED: running revertInvalidSnapshots for snapshot-based cleanup');
             await revertInvalidSnapshots();
 
-            // Fallback: full scan for untracked ghosts
+            // Fallback: full scan for untracked ghosts (keyword-based cleanup)
             await new Promise(r => setTimeout(r, 300));
-            console.log('[TunnelVision] MESSAGE_DELETED: running cleanInvalidSidecarMemories for keyword-based cleanup');
             await cleanInvalidSidecarMemories();
         });
     }
@@ -190,7 +186,6 @@ async function init() {
 }
 
 async function onChatChanged() {
-    console.log('[TunnelVision] CHAT_CHANGED fired');
     autoDetectLorebooks();
     // Catch slash command deletions (like /cut) which might not emit MESSAGE_DELETED
     await cleanInvalidSidecarMemories();
@@ -1011,7 +1006,6 @@ async function cleanInvalidSidecarMemories() {
     const context = getContext();
     const chat = context.chat;
     const activeBooks = getActiveTunnelVisionBooks();
-    console.log(`[TunnelVision] cleanInvalidSidecarMemories: ${activeBooks.length} active books, ${chat?.length ?? 0} chat messages`);
     if (activeBooks.length === 0) return;
 
     // Build a set of currently valid message IDs and fingerprints
@@ -1022,21 +1016,19 @@ async function cleanInvalidSidecarMemories() {
             validMessages.add(String(msg.mesId));
             const finger = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
             validFingerprints.add(`${msg.mesId}:${finger}`);
+        } else {
+            // Legacy chats: messages may not have mesId — use index + content hash
+            const finger = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
+            if (finger !== '0') validFingerprints.add(finger);
         }
     }
-    console.log(`[TunnelVision] cleanInvalidSidecarMemories: ${validMessages.size} valid message IDs, ${validFingerprints.size} valid fingerprints`);
 
     for (const bookName of activeBooks) {
         const bookData = await loadWorldInfo(bookName);
-        if (!bookData || !bookData.entries) {
-            console.log(`[TunnelVision] cleanInvalidSidecarMemories: "${bookName}" has no entries, skipping`);
-            continue;
-        }
+        if (!bookData || !bookData.entries) continue;
 
         let changed = false;
         const entryKeys = Object.keys(bookData.entries);
-        let trackedEntries = 0;
-        let deletedEntries = 0;
 
         for (const key of entryKeys) {
             const entry = bookData.entries[key];
@@ -1051,7 +1043,7 @@ async function cleanInvalidSidecarMemories() {
                 const parts = trackerKey.split(':');
                 if (parts.length >= 3) {
                     msgId = parts[1];
-                    finger = parts.slice(2).join(':'); // hash might contain colons, though unlikely
+                    finger = parts.slice(2).join(':');
                 }
             } else {
                 // 2. Fallback for legacy tagged entries
@@ -1063,15 +1055,9 @@ async function cleanInvalidSidecarMemories() {
             }
 
             if (msgId) {
-                trackedEntries++;
                 const fullKey = `${msgId}:${finger}`;
-
-                // If message is gone OR its content has changed (swipe), invalidate memory.
-                // We are now aggressive: even if msgId is 'untracked', we check the fingerprint.
                 const isMessageValid = msgId === 'untracked' || validMessages.has(msgId);
-                const isFingerprintValid = validFingerprints.has(fullKey);
-
-                console.log(`[TunnelVision] Checking tracked entry: "${comment.substring(0, 50)}" msgId=${msgId} isMsgValid=${isMessageValid} isFingerValid=${isFingerprintValid}`);
+                const isFingerprintValid = validFingerprints.has(fullKey) || validFingerprints.has(finger);
 
                 if (!isMessageValid || !isFingerprintValid) {
                     console.log(`[TunnelVision] Auto-cleaning invalid memory: "${comment.substring(0, 40)}..." (UID ${entry.uid}) in "${bookName}"`);
@@ -1084,20 +1070,15 @@ async function cleanInvalidSidecarMemories() {
                     }
 
                     // Delete from lorebook using ST's native API
-                    const delResult = await deleteWorldInfoEntry(bookData, entry.uid, { silent: true });
-                    console.log(`[TunnelVision] deleteWorldInfoEntry returned: ${delResult}`);
+                    await deleteWorldInfoEntry(bookData, entry.uid, { silent: true });
                     deleteWIOriginalDataValue(bookData, entry.uid);
                     changed = true;
-                    deletedEntries++;
                 }
             }
         }
 
-        console.log(`[TunnelVision] cleanInvalidSidecarMemories for "${bookName}": ${trackedEntries} tracked, ${deletedEntries} deleted, changed=${changed}`);
-
         if (changed) {
             await saveWorldInfo(bookName, bookData, true);
-            console.log(`[TunnelVision] Saved "${bookName}" after cleanup`);
         }
     }
 }
