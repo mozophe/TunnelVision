@@ -73,10 +73,7 @@ export async function createEntry(bookName, { content, comment, keys, nodeId, tv
     newEntry.constant = false;
     newEntry.disable = false;
 
-    // Persist to disk
-    await saveWorldInfo(bookName, bookData, true);
-
-    // Assign to tree node
+    // Assign to tree node in memory BEFORE saving lorebook
     let nodeLabel = 'Root';
     const tree = getTree(bookName);
     if (tree && tree.root) {
@@ -89,9 +86,16 @@ export async function createEntry(bookName, { content, comment, keys, nodeId, tv
             }
         }
         addEntryToNode(targetNode, newEntry.uid);
-        saveTree(bookName, tree);
     } else {
         nodeLabel = '(no tree)';
+    }
+
+    // Persist lorebook to disk (triggers WORLDINFO_UPDATED)
+    await saveWorldInfo(bookName, bookData, true);
+    
+    // Save tree structure
+    if (tree) {
+        saveTree(bookName, tree);
     }
 
     if (isTrackerTitle(newEntry.comment)) {
