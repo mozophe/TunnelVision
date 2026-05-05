@@ -193,6 +193,8 @@ async function init() {
 
 async function onChatChanged() {
     autoDetectLorebooks();
+    // Catch slash command deletions (like /cut) which might not emit MESSAGE_DELETED
+    await cleanInvalidSidecarMemories();
     refreshUI();
     await registerTools();
 }

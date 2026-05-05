@@ -110,8 +110,7 @@ export async function createEntry(bookName, { content, comment, keys, nodeId, tv
     }
 
     // 4. Force SillyTavern UI to update
-    if (typeof window.renderWorldInfoList === 'function') window.renderWorldInfoList();
-    if (typeof window.renderWorldInfo === 'function') window.renderWorldInfo();
+    forceSTLorebookUIUpdate(bookName);
 
     if (isTrackerTitle(finalizedEntry.comment)) {
         setTrackerUid(bookName, finalizedEntry.uid, true);
@@ -505,4 +504,15 @@ function findNodeContainingUid(node, uid) {
         if (found) return found;
     }
     return null;
+}
+
+/**
+ * Force SillyTavern's native UI to redraw the entries list for a lorebook.
+ * @param {string} bookName
+ */
+export function forceSTLorebookUIUpdate(bookName) {
+    const sel = document.getElementById('world_editor_select');
+    if (sel && sel.options[sel.selectedIndex]?.textContent === bookName) {
+        sel.dispatchEvent(new Event('change'));
+    }
 }
