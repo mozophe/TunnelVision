@@ -35,10 +35,10 @@ import {
  * @param {string} params.comment - Entry title/comment
  * @param {string[]} [params.keys] - Primary trigger keys
  * @param {string} [params.nodeId] - Tree node to assign to (defaults to root)
- * @param {string} [params.comment_suffix] - Optional suffix for tagging (e.g. [TV_SIDECAR:msgId])
+ * @param {Object} [params.tv_meta] - Optional hidden metadata for sidecar tracking
  * @returns {Promise<{uid: number, comment: string, nodeLabel: string}>}
  */
-export async function createEntry(bookName, { content, comment, keys, nodeId, comment_suffix }) {
+export async function createEntry(bookName, { content, comment, keys, nodeId, tv_meta }) {
     if (!content || !content.trim()) {
         throw new Error('Entry content cannot be empty.');
     }
@@ -60,8 +60,10 @@ export async function createEntry(bookName, { content, comment, keys, nodeId, co
     // Populate fields
     newEntry.content = content.trim();
     newEntry.comment = comment.trim();
-    if (comment_suffix) {
-        newEntry.comment += ` ${comment_suffix}`;
+    
+    // Store hidden metadata for auto-cleanup (persists in JSON)
+    if (tv_meta) {
+        newEntry.tv_meta = tv_meta;
     }
     if (Array.isArray(keys) && keys.length > 0) {
         newEntry.key = keys.map(k => String(k).trim()).filter(Boolean);

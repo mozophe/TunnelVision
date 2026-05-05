@@ -141,19 +141,18 @@ async function init() {
 
     // Post-generation sidecar writer (remember/update after model responds)
     if (event_types.MESSAGE_RECEIVED) {
-        eventSource.on(event_types.MESSAGE_RECEIVED, async (messageId, type) => {
+        eventSource.on(event_types.MESSAGE_RECEIVED, async (index, type) => {
+            const context = getContext();
+            const msg = context.chat[index];
+            const realMsgId = msg?.mesId;
+
             // If swiped, cleanup old memories and revert updates from the previous response
-            if (type === 'swipe') {
-                const context = getContext();
-                const lastMsg = context.chat[context.chat.length - 1];
-                if (lastMsg) {
-                    const msgId = lastMsg.mesId;
-                    const msgHash = lastMsg.mes ? `${lastMsg.mes.length}_${lastMsg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
-                    await revertMessageSnapshots(msgId, msgHash);
-                }
+            if (type === 'swipe' && realMsgId) {
+                const msgHash = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
+                await revertMessageSnapshots(realMsgId, msgHash);
                 await cleanInvalidSidecarMemories();
             }
-            await onMessageReceived(messageId, type);
+            await onMessageReceived(realMsgId, type);
         });
     }
 
@@ -171,8 +170,8 @@ async function init() {
                 await revertMessageSnapshots(msgId, msgHash);
             }
 
-            // Fallback: full scan for untracked ghosts
-            await new Promise(r => setTimeout(r, 100));
+            // Fallback: full scan for untracked ghosts (with delay for /cut)
+            await new Promise(r => setTimeout(r, 200));
             await cleanInvalidSidecarMemories();
         });
     }
@@ -1018,7 +1017,7 @@ async function cleanInvalidSidecarMemories() {
     for (const msg of chat) {
         if (msg.mesId !== undefined) {
             validMessages.add(String(msg.mesId));
-            const finger = msg.mes ? msg.mes.substring(0, 100).length : 0;
+            const finger = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
             validFingerprints.add(`${msg.mesId}:${finger}`);
         }
     }
@@ -1032,20 +1031,32 @@ async function cleanInvalidSidecarMemories() {
 
         for (const key of entryKeys) {
             const entry = bookData.entries[key];
+            const meta = entry.tv_meta; // New hidden metadata
             const comment = entry.comment || '';
             
-            // Check for sidecar tag: [TV_SIDECAR:msgId:fingerprint]
-            const match = comment.match(/\[TV_SIDECAR:([^:]+):([^\]]+)\]/);
-            if (match) {
-                const msgId = match[1];
-                const finger = match[2];
+            let msgId, finger;
+
+            if (meta && meta.msgId) {
+                msgId = String(meta.msgId);
+                finger = meta.msgHash;
+            } else {
+                // Fallback for legacy tagged entries
+                const match = comment.match(/\[TV_SIDECAR:([^:]+):([^\]]+)\]/);
+                if (match) {
+                    msgId = match[1];
+                    finger = match[2];
+                }
+            }
+
+            if (msgId) {
                 const fullKey = `${msgId}:${finger}`;
 
                 // If message is gone OR its content has changed (swipe), invalidate memory
-                if (!validMessages.has(msgId) || !validFingerprints.has(fullKey)) {
-                    console.log(`[TunnelVision] Auto-cleaning invalid memory: "${comment}" (UID ${entry.uid}) in "${bookName}"`);
+                // Note: we only cleanup if msgId is NOT 'untracked'
+                if (msgId !== 'untracked' && (!validMessages.has(msgId) || !validFingerprints.has(fullKey))) {
+                    console.log(`[TunnelVision] Auto-cleaning invalid memory: "${comment.substring(0, 40)}..." (UID ${entry.uid}) in "${bookName}"`);
                     
-                    // Remove from tree first
+                    // Remove from tree
                     const tree = getTree(bookName);
                     if (tree) {
                         removeEntryFromTree(tree.root, entry.uid);

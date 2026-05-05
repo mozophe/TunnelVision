@@ -630,7 +630,20 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
             }
 
             let result;
-            const commentSuffix = `[TV_SIDECAR:${msgId}:${msgHash}]`;
+            const context = getContext();
+            const lastMsg = context.chat[context.chat.length - 1];
+            
+            // Resolve message ID reliably
+            let msgId = messageId;
+            if (msgId === null || msgId === undefined) {
+                msgId = lastMsg?.mesId;
+            }
+            if (msgId === null || msgId === undefined) {
+                msgId = 'untracked';
+            }
+
+            const msgHash = lastMsg?.mes ? `${lastMsg.mes.length}_${lastMsg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
+            const tv_meta = { msgId, msgHash };
 
             if (op.type === 'remember') {
                 result = await rememberAction({
@@ -639,7 +652,7 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
                     content: op.content,
                     keys: op.keys,
                     node_id: op.target_node_id,
-                    comment_suffix: commentSuffix,
+                    tv_meta,
                 });
             } else if (op.type === 'update') {
                 result = await updateAction({
@@ -664,7 +677,7 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
                     summary: op.summary,
                     participants: op.participants,
                     significance: op.significance,
-                    comment_suffix: commentSuffix,
+                    tv_meta,
                 });
             } else if (op.type === 'forget') {
                 result = await forgetAction({
