@@ -141,9 +141,10 @@ async function init() {
 
     // Post-generation sidecar writer (remember/update after model responds)
     if (event_types.MESSAGE_RECEIVED) {
-        eventSource.on(event_types.MESSAGE_RECEIVED, async (index, type) => {
+        eventSource.on(event_types.MESSAGE_RECEIVED, async (messageIndexOrId, type) => {
             const context = getContext();
-            const msg = context.chat[index];
+            // Robust lookup: could be index or UID
+            const msg = context.chat[messageIndexOrId] || context.chat.find(m => m.mesId === messageIndexOrId);
             const realMsgId = msg?.mesId;
 
             // If swiped, cleanup old memories and revert updates from the previous response
@@ -158,20 +159,20 @@ async function init() {
 
     // Clean up orphaned tool invocations when messages are deleted
     if (event_types.MESSAGE_DELETED) {
-        eventSource.on(event_types.MESSAGE_DELETED, async (index) => {
+        eventSource.on(event_types.MESSAGE_DELETED, async (messageIndexOrId) => {
             cleanOrphanedToolInvocations();
             
-            // Try to revert via snapshot first (precise undo)
             const context = getContext();
-            const msg = context.chat[index];
+            const msg = context.chat[messageIndexOrId] || context.chat.find(m => m.mesId === messageIndexOrId);
+            
             if (msg) {
                 const msgId = msg.mesId;
                 const msgHash = msg.mes ? `${msg.mes.length}_${msg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
                 await revertMessageSnapshots(msgId, msgHash);
             }
 
-            // Fallback: full scan for untracked ghosts (with delay for /cut)
-            await new Promise(r => setTimeout(r, 200));
+            // Fallback: full scan for untracked ghosts
+            await new Promise(r => setTimeout(r, 300));
             await cleanInvalidSidecarMemories();
         });
     }
