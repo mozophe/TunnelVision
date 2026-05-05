@@ -93,6 +93,11 @@ export async function createEntry(bookName, { content, comment, keys, nodeId, tv
     // Persist lorebook to disk (triggers WORLDINFO_UPDATED)
     await saveWorldInfo(bookName, bookData, true);
     
+    // FORCE SYNC: Tell SillyTavern to update its internal memory and UI
+    if (typeof window.renderWorldInfo === 'function') {
+        window.renderWorldInfo();
+    }
+    
     // Save tree structure
     if (tree) {
         saveTree(bookName, tree);
