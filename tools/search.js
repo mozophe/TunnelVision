@@ -19,6 +19,7 @@ import {
 } from '../tree-store.js';
 import { getReadableBooks } from '../tool-registry.js';
 import { getKeywordTriggeredUids } from '../index.js';
+import { getInjectedNodeIds } from '../sidecar-retrieval.js';
 
 /**
  * Build a UID→entry lookup map from lorebook data.

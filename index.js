@@ -848,18 +848,24 @@ async function onGenerationStarted(type, opts, dryRun) {
     window.TunnelVision_isRecursiveToolPass = isRecursiveToolPass;
     window.TunnelVision_toolRecursionDepth = _toolRecursionDepth;
 
+    const settings = getSettings();
+
     // On recursive passes, clear the mandatory tool prompt so the model isn't
     // told "you MUST call a tool" when it already has tool results and should
     // be writing the actual response. Then skip all other heavy work.
     if (isRecursiveToolPass) {
-        setExtensionPrompt(TV_PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        const mandatoryPosition = mapPositionSetting(settings.mandatoryPromptPosition);
+        const mandatoryDepth = settings.mandatoryPromptDepth ?? 1;
+        const mandatoryRoleSetting = (settings.mandatoryPromptPosition === 'in_chat' && settings.mandatoryPromptRole === 'user')
+            ? 'system' : settings.mandatoryPromptRole;
+        const mandatoryRole = mapRoleSetting(mandatoryRoleSetting);
+        setExtensionPrompt(TV_PROMPT_KEY, '', mandatoryPosition, mandatoryDepth, false, mandatoryRole);
         return;
     }
 
     // Reset per-generation guards (only on first pass, not recursive)
     resetNotebookWriteGuard();
 
-    const settings = getSettings();
     let runtimeState = null;
 
     // Clean up orphaned tool_invocations at the tail of chat (caused by

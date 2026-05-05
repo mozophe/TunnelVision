@@ -26,8 +26,19 @@ import { getReadableBooks } from './tool-registry.js';
 import { hasEvaluableConditions, separateConditions, mapSelectiveLogic, describeSelectiveLogic, CONDITION_DESCRIPTIONS, CONDITION_LABELS, rollKeywordProbability, formatCondition } from './conditions.js';
 import { isSidecarConfigured, sidecarGenerate, getSidecarModelLabel } from './llm-sidecar.js';
 import { logSidecarRetrieval, logConditionalEvaluations, setSidecarActive } from './activity-feed.js';
+import { getKeywordTriggeredUids } from './index.js';
 
 const TV_SIDECAR_RETRIEVAL_KEY = 'tunnelvision_sidecar_retrieval';
+
+let lastInjectedNodeIds = [];
+
+/**
+ * Get the list of node IDs currently injected into the context by the sidecar.
+ * @returns {string[]}
+ */
+export function getInjectedNodeIds() {
+    return lastInjectedNodeIds;
+}
 
 // ─── Tree Overview (reuses collapsed-tree format from search.js) ─────
 
@@ -254,6 +265,9 @@ async function resolveNodeContent(nodeIds) {
                 if (seenEntries.has(entryKey)) continue;
                 seenEntries.add(entryKey);
 
+                // Skip if already in context via keyword trigger
+                if (getKeywordTriggeredUids().has(Number(uid))) continue;
+
                 const entry = findEntryByUid(bookData.entries, uid);
                 if (!entry?.content || entry.disable) continue;
 
@@ -399,6 +413,9 @@ async function resolveConditionalContent(evaluations, conditionalEntries) {
     for (const ce of conditionalEntries) {
         if (!acceptedUids.has(ce.uid)) continue;
 
+        // Skip if already in context via keyword trigger
+        if (getKeywordTriggeredUids().has(Number(ce.uid))) continue;
+
         const bookData = await loadWorldInfo(ce.bookName);
         if (!bookData?.entries) continue;
 
@@ -471,6 +488,8 @@ export async function runSidecarRetrieval() {
             return;
         }
 
+        lastInjectedNodeIds = [...nodeIds];
+
         // Injection settings
         const position = mapPosition(settings.mandatoryPromptPosition);
         const depth = settings.mandatoryPromptDepth ?? 1;
@@ -514,7 +533,7 @@ export async function runSidecarRetrieval() {
             : injectionText;
 
         // IN_CHAT depth 0 = injected at the very bottom of the chat history (closest to the latest message)
-        setExtensionPrompt(TV_SIDECAR_RETRIEVAL_KEY, capped, extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        setExtensionPrompt(TV_SIDECAR_RETRIEVAL_KEY, capped, position, depth, false, role);
 
         // Resolve node labels for the feed
         const nodeLabels = nodeIds.map(id => {
@@ -559,6 +578,7 @@ export async function runSidecarRetrieval() {
  * @param {Object} settings
  */
 function clearRetrievalPrompt(settings) {
+    lastInjectedNodeIds = [];
     const position = mapPosition(settings.mandatoryPromptPosition);
     const depth = settings.mandatoryPromptDepth ?? 1;
     const role = mapRole(settings.mandatoryPromptRole);

@@ -33,6 +33,51 @@ import { getDefinition as getReorganizeDef } from './tools/reorganize.js';
 import { getDefinition as getMergeSplitDef } from './tools/merge-split.js';
 import { logSidecarWrite } from './activity-feed.js';
 
+// ─── Recent Operations Buffer ────────────────────────────────────
+
+/**
+ * Tracks recent sidecar operations to avoid redundant writes across turns.
+ * Keyed by chatId.
+ * @type {Map<string, Array<{type: string, summary: string, turn: number}>>}
+ */
+const recentOpsBuffer = new Map();
+const MAX_BUFFERED_OPS = 10;
+
+/**
+ * Add an operation to the recent buffer.
+ * @param {string} chatId
+ * @param {string} type
+ * @param {string} summary
+ */
+function bufferOperation(chatId, type, summary) {
+    if (!chatId) return;
+    if (!recentOpsBuffer.has(chatId)) {
+        recentOpsBuffer.set(chatId, []);
+    }
+    const buffer = recentOpsBuffer.get(chatId);
+    buffer.unshift({ type, summary, turn: getContext().chat.length });
+    if (buffer.length > MAX_BUFFERED_OPS) {
+        buffer.pop();
+    }
+}
+
+/**
+ * Format recent operations for the sidecar prompt.
+ * @param {string} chatId
+ * @returns {string}
+ */
+function formatRecentOperations(chatId) {
+    if (!chatId || !recentOpsBuffer.has(chatId)) return '';
+    const buffer = recentOpsBuffer.get(chatId);
+    if (buffer.length === 0) return '';
+
+    let text = '\nRECENT SIDECAR OPERATIONS (already performed):\n';
+    for (const op of buffer) {
+        text += `- Turn ${op.turn} [${op.type}]: ${op.summary}\n`;
+    }
+    return text;
+}
+
 // ─── Tree Overview (shared format with sidecar-retrieval.js) ─────
 
 /**
@@ -220,7 +265,7 @@ Response format:
 {
   "reasoning": "A brief explanation of why these operations are needed",
   "remember": [
-    {"lorebook": "BookName", "title": "Entry Title", "content": "The fact to remember...", "keys": ["keyword1", "keyword2"]}
+    {"lorebook": "BookName", "title": "Entry Title", "content": "The fact to remember...", "keys": ["keyword1", "keyword2"], "target_node_id": "tv_xxx_yyy"}
   ],
   "update": [
     {"lorebook": "BookName", "uid": 123, "content": "Updated content...", "title": "Optional new title"}
@@ -248,11 +293,12 @@ Return ONLY the JSON object, no explanation.`;
  * Build the sidecar writer prompt.
  * @param {string} treeOverview
  * @param {string} recentChat
+ * @param {string} [recentOps]
  * @returns {string}
  */
-function buildWriterPrompt(treeOverview, recentChat) {
+function buildWriterPrompt(treeOverview, recentChat, recentOps = '') {
     return `CURRENT LOREBOOK STATE:
-${treeOverview}
+${treeOverview}${recentOps}
 
 CONVERSATION (including latest response):
 ${recentChat}
@@ -311,6 +357,7 @@ function parseWriteOps(response) {
                     title: String(r.title).substring(0, 200),
                     content: String(r.content).substring(0, 2000),
                     keys: Array.isArray(r.keys) ? r.keys.map(String).slice(0, 10) : [],
+                    target_node_id: r.target_node_id ? String(r.target_node_id) : undefined,
                 });
             }
         }
@@ -461,6 +508,7 @@ async function executeWriteOps(ops, reasoning = '') {
                     title: op.title,
                     content: op.content,
                     keys: op.keys,
+                    node_id: op.target_node_id,
                 });
             } else if (op.type === 'update') {
                 result = await updateAction({
@@ -526,25 +574,30 @@ async function executeWriteOps(ops, reasoning = '') {
             } else {
                 succeeded++;
                 results.push(`OK [${op.type}]: ${result}`);
+
+                const opSummary = op.type === 'remember'
+                    ? `"${(op.title || '').substring(0, 50)}"`
+                    : op.type === 'merge'
+                    ? `UID ${op.keep_uid ?? '?'} ← UID ${op.remove_uid ?? '?'}${op.title ? ` "${op.title.substring(0, 40)}"` : ''}`
+                    : op.type === 'summarize'
+                    ? `"${(op.title || '').substring(0, 50)}"`
+                    : op.type === 'forget'
+                    ? `UID ${op.uid ?? '?'}: ${(op.reason || '').substring(0, 40)}`
+                    : op.type === 'reorganize'
+                    ? `${op.action || '?'}${op.uid ? ` UID ${op.uid}` : ''}${op.title ? ` "${op.title.substring(0, 30)}"` : ''}`
+                    : op.type === 'split'
+                    ? `UID ${op.uid ?? '?'} → "${(op.new_title || '').substring(0, 40)}"`
+                    : `UID ${op.uid ?? '?'}${op.title ? ` "${op.title.substring(0, 40)}"` : ''}`;
+
+                bufferOperation(getContext().chatId, op.type, opSummary);
+
                 logSidecarWrite(op.type, {
                     lorebook: op.lorebook,
                     title: op.title,
                     uid: op.uid,
                     keep_uid: op.keep_uid,
                     remove_uid: op.remove_uid,
-                    summary: op.type === 'remember'
-                        ? `"${(op.title || '').substring(0, 50)}"`
-                        : op.type === 'merge'
-                        ? `UID ${op.keep_uid ?? '?'} ← UID ${op.remove_uid ?? '?'}${op.title ? ` "${op.title.substring(0, 40)}"` : ''}`
-                        : op.type === 'summarize'
-                        ? `"${(op.title || '').substring(0, 50)}"`
-                        : op.type === 'forget'
-                        ? `UID ${op.uid ?? '?'}: ${(op.reason || '').substring(0, 40)}`
-                        : op.type === 'reorganize'
-                        ? `${op.action || '?'}${op.uid ? ` UID ${op.uid}` : ''}${op.title ? ` "${op.title.substring(0, 30)}"` : ''}`
-                        : op.type === 'split'
-                        ? `UID ${op.uid ?? '?'} → "${(op.new_title || '').substring(0, 40)}"`
-                        : `UID ${op.uid ?? '?'}${op.title ? ` "${op.title.substring(0, 40)}"` : ''}`,
+                    summary: opSummary,
                     reasoning,
                 });
             }
@@ -593,9 +646,11 @@ export async function runSidecarWriter() {
         return;
     }
 
+    const recentOps = formatRecentOperations(getContext().chatId);
+
     try {
         // Ask sidecar what to write
-        const prompt = buildWriterPrompt(treeOverview, recentChat);
+        const prompt = buildWriterPrompt(treeOverview, recentChat, recentOps);
         const response = await sidecarGenerate({
             prompt,
             systemPrompt: WRITER_SYSTEM_PROMPT,
