@@ -643,7 +643,7 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
             }
 
             const msgHash = lastMsg?.mes ? `${lastMsg.mes.length}_${lastMsg.mes.substring(0, 100).replace(/[^\w]/g, '')}` : '0';
-            const tv_meta = { msgId, msgHash };
+            const tv_tracker = `!tv_tracker:${msgId}:${msgHash}`;
 
             if (op.type === 'remember') {
                 result = await rememberAction({
@@ -652,7 +652,7 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
                     content: op.content,
                     keys: op.keys,
                     node_id: op.target_node_id,
-                    tv_meta,
+                    tv_tracker,
                 });
             } else if (op.type === 'update') {
                 result = await updateAction({
@@ -677,7 +677,7 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
                     summary: op.summary,
                     participants: op.participants,
                     significance: op.significance,
-                    tv_meta,
+                    tv_tracker,
                 });
             } else if (op.type === 'forget') {
                 result = await forgetAction({
@@ -773,9 +773,10 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
  * Run sidecar post-generation writer.
  * Called after MESSAGE_RECEIVED in index.js.
  *
+ * @param {string|number} [messageId]
  * @returns {Promise<void>}
  */
-export async function runSidecarWriter() {
+export async function runSidecarWriter(messageId = null) {
     const settings = getSettings();
 
     // Guard: must be enabled and sidecar must be configured
@@ -829,7 +830,7 @@ export async function runSidecarWriter() {
         const capped = ops.slice(0, maxOps);
 
         // Execute writes
-        const { succeeded, failed, results } = await executeWriteOps(capped, reasoning);
+        const { succeeded, failed, results } = await executeWriteOps(capped, reasoning, messageId);
 
         // Explicitly refresh UI after all modifications are complete
         const { refreshUI } = await import('./ui-controller.js');

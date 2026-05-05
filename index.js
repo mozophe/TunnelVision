@@ -1032,16 +1032,21 @@ async function cleanInvalidSidecarMemories() {
 
         for (const key of entryKeys) {
             const entry = bookData.entries[key];
-            const meta = entry.tv_meta; // New hidden metadata
             const comment = entry.comment || '';
+            const keys = entry.key || [];
             
             let msgId, finger;
 
-            if (meta && meta.msgId) {
-                msgId = String(meta.msgId);
-                finger = meta.msgHash;
+            // 1. Check for new keyword-based tracker (!tv_tracker:msgId:hash)
+            const trackerKey = keys.find(k => String(k).startsWith('!tv_tracker:'));
+            if (trackerKey) {
+                const parts = trackerKey.split(':');
+                if (parts.length >= 3) {
+                    msgId = parts[1];
+                    finger = parts.slice(2).join(':'); // hash might contain colons, though unlikely
+                }
             } else {
-                // Fallback for legacy tagged entries
+                // 2. Fallback for legacy tagged entries
                 const match = comment.match(/\[TV_SIDECAR:([^:]+):([^\]]+)\]/);
                 if (match) {
                     msgId = match[1];

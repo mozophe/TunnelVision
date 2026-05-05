@@ -35,10 +35,10 @@ import {
  * @param {string} params.comment - Entry title/comment
  * @param {string[]} [params.keys] - Primary trigger keys
  * @param {string} [params.nodeId] - Tree node to assign to (defaults to root)
- * @param {Object} [params.tv_meta] - Optional hidden metadata for sidecar tracking
+ * @param {string} [params.tv_tracker] - Optional tracking keyword for sidecar auto-cleanup
  * @returns {Promise<{uid: number, comment: string, nodeLabel: string}>}
  */
-export async function createEntry(bookName, { content, comment, keys, nodeId, tv_meta }) {
+export async function createEntry(bookName, { content, comment, keys, nodeId, tv_tracker }) {
     if (!content || !content.trim()) {
         throw new Error('Entry content cannot be empty.');
     }
@@ -61,13 +61,20 @@ export async function createEntry(bookName, { content, comment, keys, nodeId, tv
     newEntry.content = content.trim();
     newEntry.comment = comment.trim();
     
-    // Store hidden metadata for auto-cleanup (persists in JSON)
-    if (tv_meta) {
-        newEntry.tv_meta = tv_meta;
+    let finalKeys = [];
+    if (Array.isArray(keys)) {
+        finalKeys = keys.map(k => String(k).trim()).filter(Boolean);
     }
-    if (Array.isArray(keys) && keys.length > 0) {
-        newEntry.key = keys.map(k => String(k).trim()).filter(Boolean);
+    
+    // Store tracking data as a native keyword so ST doesn't strip it
+    if (tv_tracker) {
+        finalKeys.push(tv_tracker);
     }
+    
+    if (finalKeys.length > 0) {
+        newEntry.key = finalKeys;
+    }
+    
     // TunnelVision-managed entries: disable keyword triggering since retrieval is tree-based
     newEntry.selective = false;
     newEntry.constant = false;

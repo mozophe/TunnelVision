@@ -265,7 +265,7 @@ When you notice related events forming a pattern or storyline, group them into "
                     comment: `[Summary] ${args.title}`,
                     keys,
                     nodeId: targetNodeId,
-                    tv_meta: args.tv_meta,
+                    tv_tracker: args.tv_tracker,
                 });
                 markAutoSummaryComplete();
                 let response = `Summarized: "${args.title}" (UID ${result.uid}) → "${result.nodeLabel}" in "${lorebook}". Significance: ${significance}.`;
