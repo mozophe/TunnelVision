@@ -16,7 +16,7 @@
  */
 
 import { getContext } from '../../../st-context.js';
-import { loadWorldInfo } from '../../../world-info.js';
+import { loadWorldInfo, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
 import {
     getTree,
     findNodeById,
@@ -109,19 +109,14 @@ export async function revertMessageSnapshots(msgId, msgHash) {
         const { bookName, uid } = item;
         const bookData = await loadWorldInfo(bookName);
         if (bookData?.entries) {
-            const entryKey = Object.keys(bookData.entries).find(k => bookData.entries[k].uid === uid);
-            if (entryKey) {
-                console.debug(`   - Deleting created entry: "${bookData.entries[entryKey].comment}" (UID ${uid})`);
-                delete bookData.entries[entryKey];
-                
-                // Deep delete from SillyTavern's underlying array
-                if (bookData.originalData && Array.isArray(bookData.originalData.entries)) {
-                    const origIdx = bookData.originalData.entries.findIndex(x => x.uid === uid);
-                    if (origIdx >= 0) bookData.originalData.entries.splice(origIdx, 1);
-                }
+            const entry = bookData.entries[uid];
+            if (entry) {
+                console.debug(`   - Deleting created entry: "${entry.comment}" (UID ${uid})`);
+                await deleteWorldInfoEntry(bookData, uid, { silent: true });
+                deleteWIOriginalDataValue(bookData, uid);
 
                 await saveWorldInfo(bookName, bookData, true);
-                
+
                 // Force UI update so it vanishes from the native Lorebook instantly
                 if (typeof window.renderWorldInfoList === 'function') window.renderWorldInfoList();
                 if (typeof window.renderWorldInfo === 'function') window.renderWorldInfo();

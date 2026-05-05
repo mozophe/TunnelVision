@@ -32,7 +32,7 @@ import { initAutoSummary } from './auto-summary.js';
 import { runSidecarRetrieval } from './sidecar-retrieval.js';
 import { runSidecarWriter, revertMessageSnapshots, revertInvalidSnapshots } from './sidecar-writer.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
-import { loadWorldInfo, saveWorldInfo, world_names } from '../../../world-info.js';
+import { loadWorldInfo, saveWorldInfo, world_names, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
 
 const EXTENSION_NAME = 'tunnelvision';
@@ -1073,12 +1073,9 @@ async function cleanInvalidSidecarMemories() {
                         saveTree(bookName, tree);
                     }
 
-                    // Delete from lorebook
-                    delete bookData.entries[key];
-                    if (bookData.originalData && Array.isArray(bookData.originalData.entries)) {
-                        const origIdx = bookData.originalData.entries.findIndex(x => x.uid === entry.uid);
-                        if (origIdx >= 0) bookData.originalData.entries.splice(origIdx, 1);
-                    }
+                    // Delete from lorebook using ST's native API
+                    await deleteWorldInfoEntry(bookData, entry.uid, { silent: true });
+                    deleteWIOriginalDataValue(bookData, entry.uid);
                     changed = true;
                 }
             }

@@ -14,6 +14,8 @@ import {
     loadWorldInfo,
     createWorldInfoEntry,
     saveWorldInfo,
+    deleteWorldInfoEntry,
+    deleteWIOriginalDataValue,
 } from '../../../world-info.js';
 import {
     getTree,
@@ -193,13 +195,8 @@ export async function forgetEntry(bookName, uid, hardDelete = false) {
     let action;
 
     if (hardDelete) {
-        // Find the correct key for this UID (keys are NOT the same as UIDs in ST)
-        for (const key of Object.keys(bookData.entries)) {
-            if (bookData.entries[key].uid === uid) {
-                delete bookData.entries[key];
-                break;
-            }
-        }
+        await deleteWorldInfoEntry(bookData, uid, { silent: true });
+        deleteWIOriginalDataValue(bookData, uid);
         action = 'deleted';
     } else {
         entry.disable = true;
@@ -378,12 +375,8 @@ export async function mergeEntries(bookName, keepUid, removeUid, opts = {}) {
 
     // Disable or delete the absorbed entry
     if (opts.hardDelete) {
-        for (const key of Object.keys(bookData.entries)) {
-            if (bookData.entries[key].uid === removeUid) {
-                delete bookData.entries[key];
-                break;
-            }
-        }
+        await deleteWorldInfoEntry(bookData, removeUid, { silent: true });
+        deleteWIOriginalDataValue(bookData, removeUid);
     } else {
         removeEntry.disable = true;
     }
