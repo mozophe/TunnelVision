@@ -433,11 +433,16 @@ function chunkEntries(entries, detail, charLimit) {
 function extractCategoryLabels(root) {
     const labels = [];
     for (const child of (root.children || [])) {
-        labels.push(child.label);
+        const count = getAllEntryUids(child).length;
+        const summary = child.summary ? ` — ${child.summary.split('\n')[0].slice(0, 80)}` : '';
+        labels.push(`${child.label} (${count} entries)${summary}`);
         for (const sub of (child.children || [])) {
-            labels.push(`${child.label} > ${sub.label}`);
+            const subCount = getAllEntryUids(sub).length;
+            const subSummary = sub.summary ? ` — ${sub.summary.split('\n')[0].slice(0, 60)}` : '';
+            labels.push(`  ${child.label} > ${sub.label} (${subCount} entries)${subSummary}`);
             for (const grand of (sub.children || [])) {
-                labels.push(`${child.label} > ${sub.label} > ${grand.label}`);
+                const grandCount = getAllEntryUids(grand).length;
+                labels.push(`    ${child.label} > ${sub.label} > ${grand.label} (${grandCount} entries)`);
             }
         }
     }
@@ -466,7 +471,7 @@ ${catList}
 Here are the NEW entries to categorize:
 ${entryList}
 
-IMPORTANT: Every entry UID must appear exactly once. Assign each entry to the BEST-FIT existing category. Only create a new category if an entry truly does not fit any existing one.${subCatHint} Do NOT leave entries uncategorized — every UID must be in a category.
+IMPORTANT: Every entry UID must appear exactly once. Strongly prefer existing categories — only create a new one if NO existing category is even a plausible fit. New category labels must follow the same naming style as existing ones (specific noun phrases, no "Other"/"Misc"/"General").${subCatHint} Do NOT leave entries uncategorized — every UID must be in a category.
 
 Respond with ONLY valid JSON in this exact format:
 {
@@ -766,11 +771,8 @@ async function subdivideLargeNodes(node, bookData, totalEntryCount = 0, _depth =
             // When the node already has children (e.g. root with orphaned entries from
             // multi-chunk categorization), tell the LLM about existing categories so it
             // can assign entries to them rather than creating redundant new ones.
-            const existingChildren = node.children.length > 0
-                ? node.children.map(c => c.label)
-                : [];
-            const existingHint = existingChildren.length > 0
-                ? `\n\nExisting sub-categories in "${node.label}": ${existingChildren.join(', ')}. Assign entries to these when they fit, or create new sub-categories for entries that don't fit any existing one.`
+            const existingHint = node.children.length > 0
+                ? `\n\nExisting sub-categories in "${node.label}": ${node.children.map(c => `${c.label} (${c.entryUids.length} entries)`).join(', ')}. Assign entries to these when they fit, or create new sub-categories only for entries that genuinely do not fit any existing one.`
                 : '';
 
             try {
@@ -778,7 +780,7 @@ async function subdivideLargeNodes(node, bookData, totalEntryCount = 0, _depth =
                 const subCatCount = Math.min(6, Math.ceil(nodeEntries.length / gran.maxEntries));
                 const entryList = nodeEntries.map(e => `  ${formatEntryForLLM(e, detail)}`).join('\n');
                 const response = await generateRaw({
-                    prompt: `You have ${nodeEntries.length} lorebook entries in "${node.label}". Split into 2-${subCatCount} sub-categories. Every entry must be assigned.${existingHint}\n\nEntries:\n${entryList}\n\nRespond ONLY with JSON: { "subcategories": [{ "label": "Name", "entries": [uid1, uid2] }] }`,
+                    prompt: `You have ${nodeEntries.length} lorebook entries in the "${node.label}" category of a lorebook tree used for AI context retrieval. Split into 2–${subCatCount} focused sub-categories so an AI assistant can navigate to the right entries quickly.${existingHint}\n\nUse specific, descriptive noun phrases as sub-category labels. Avoid "Other", "Miscellaneous", or "General". Every entry must be assigned to exactly one sub-category.\n\nEntries:\n${entryList}\n\nRespond ONLY with JSON: { "subcategories": [{ "label": "Name", "entries": [uid1, uid2] }] }`,
                     systemPrompt: applyBackgroundPromptAddendum('You are a categorization assistant. Respond ONLY with valid JSON, no commentary.'),
                 });
                 if (response) {
@@ -848,6 +850,8 @@ Here are the entries to categorize now (with full details):
 ${entryList}
 
 Create a JSON hierarchy that groups these entries into logical categories. Use ${gran.targetCategories} top-level categories, each with sub-categories where natural. Aim for no more than ${gran.maxEntries} entries per leaf node. Every entry UID listed above must appear exactly once. Do NOT leave entries uncategorized.
+
+The tree is navigated by an AI assistant during chat to retrieve relevant context. Use specific, descriptive noun phrases as labels (e.g. "Magic System", "Elena's Backstory", "Port Alara Geography"). Avoid generic labels like "Other", "Miscellaneous", or "General". Category summaries should describe what an AI would find inside, not just restate the label.
 
 Respond with ONLY valid JSON in this exact format:
 {
@@ -968,6 +972,21 @@ async function _ingestChatMessages(lorebookName, { from, to, progress, detail })
 
     report(`Extracting facts from ${chunks.length} chunk(s)...`, 5);
 
+    // Load existing lorebook entries to prevent re-extraction and for trigram dedup
+    const existingBookData = await loadWorldInfo(lorebookName);
+    const existingTitles = [];
+    const dedupTexts = [];
+    if (existingBookData?.entries) {
+        for (const e of Object.values(existingBookData.entries)) {
+            if (e.disable) continue;
+            const title = (e.comment || '').trim();
+            if (title) existingTitles.push(title);
+            dedupTexts.push(`${e.comment || ''} ${e.content || ''}`.toLowerCase());
+        }
+    }
+    const shownExistingTitles = existingTitles.slice(0, 150);
+    const prevExtracted = []; // titles extracted from earlier chunks, passed to subsequent prompts
+
     let totalCreated = 0;
     let totalErrors = 0;
 
@@ -981,7 +1000,7 @@ async function _ingestChatMessages(lorebookName, { from, to, progress, detail })
         let response;
         try {
             response = await generateRaw({
-                prompt: buildIngestPrompt(lorebookName, formatted),
+                prompt: buildIngestPrompt(lorebookName, formatted, shownExistingTitles, [...prevExtracted]),
                 systemPrompt: applyBackgroundPromptAddendum('You are a fact extraction assistant. Extract important facts, character details, relationships, events, and world information from roleplay chat logs. Respond ONLY with valid JSON, no commentary.'),
             });
         } catch (e) {
@@ -1013,9 +1032,15 @@ async function _ingestChatMessages(lorebookName, { from, to, progress, detail })
 
         if (!Array.isArray(entries)) continue;
 
-        // Create entries
+        // Create entries (with trigram dedup against existing and already-ingested entries)
         for (const extracted of entries) {
             if (!extracted.title || !extracted.content) continue;
+            const newText = `${extracted.title} ${extracted.content}`.toLowerCase();
+            const isDupe = dedupTexts.some(existing => trigramSimilarity(newText, existing) >= 0.62);
+            if (isDupe) {
+                console.log(`[TunnelVision] Ingest: skipping duplicate "${extracted.title}"`);
+                continue;
+            }
             try {
                 await createEntry(lorebookName, {
                     content: String(extracted.content).trim(),
@@ -1023,6 +1048,8 @@ async function _ingestChatMessages(lorebookName, { from, to, progress, detail })
                     keys: Array.isArray(extracted.keys) ? extracted.keys : [],
                     nodeId: null,
                 });
+                dedupTexts.push(newText);
+                prevExtracted.push(String(extracted.title).trim());
                 totalCreated++;
             } catch (e) {
                 console.warn(`[TunnelVision] Failed to create entry "${extracted.title}":`, e);
@@ -1036,10 +1063,26 @@ async function _ingestChatMessages(lorebookName, { from, to, progress, detail })
     return { created: totalCreated, errors: totalErrors };
 }
 
-function buildIngestPrompt(lorebookName, chatText) {
-    return `Extract important facts from this roleplay chat log for the lorebook "${lorebookName}".
+function buildIngestPrompt(lorebookName, chatText, existingTitles = [], prevExtracted = []) {
+    const existingSection = existingTitles.length > 0
+        ? `\n[Already in lorebook — do NOT re-extract these]\n${existingTitles.map(t => `- ${t}`).join('\n')}\n`
+        : '';
+    const prevSection = prevExtracted.length > 0
+        ? `\n[Already extracted from earlier chunks — do NOT duplicate these]\n${prevExtracted.map(t => `- ${t}`).join('\n')}\n`
+        : '';
 
+    return `Extract important facts from this roleplay chat log for the lorebook "${lorebookName}".
+${existingSection}${prevSection}
 For each distinct fact, character detail, relationship, event, or world detail, create an entry.
+
+Rules:
+- Extract ONLY concrete facts, not dialogue or opinions
+- Write content in third person, factual style
+- Each entry should be a single, distinct piece of information
+- Include character names in keys for cross-referencing
+- Skip trivial or generic information
+- Merge related facts into single entries when they belong together
+- If a subject already appears in the "Already in lorebook" list above, write content as an addendum — state only the new specific detail, do NOT restate who they are or repeat their general description
 
 Chat log:
 ${chatText}
@@ -1048,18 +1091,12 @@ Respond with ONLY a JSON array:
 [
   {
     "title": "Short descriptive title",
-    "content": "The factual information written in third person. Include names, places, details.",
-    "keys": ["keyword1", "keyword2"]
+    "content": "The factual information written in third person.",
+    "keys": ["keyword1", "keyword2"],
+    "significance": "low" | "medium" | "high",
+    "when": "approximate story time if discernible, otherwise omit this field"
   }
-]
-
-Rules:
-- Extract ONLY concrete facts, not dialogue or opinions
-- Write content in third person, factual style
-- Each entry should be a single, distinct piece of information
-- Include character names in keys for cross-referencing
-- Skip trivial or generic information
-- Merge related facts into single entries when they belong together`;
+]`;
 }
 
 function findBalancedJsonEnd(text, start, opener, closer) {
