@@ -646,7 +646,8 @@ const DEDUPE_SIMILARITY_THRESHOLD = 0.55;
 const DEDUPE_MAX_CLUSTERS_PER_BATCH = 8;
 
 /**
- * Find duplicate clusters using trigram similarity on content+title.
+ * Find duplicate clusters using trigram similarity on content+title,
+ * or title-only similarity (matching diagnostics' detection logic).
  * Returns groups of 2+ entries that are near-duplicates of each other.
  */
 function findDuplicateClusters(entries, threshold) {
@@ -662,12 +663,23 @@ function findDuplicateClusters(entries, threshold) {
         if (ra !== rb) parent.set(ra, rb);
     }
 
-    // Compare all pairs
+    // Mirrors diagnostics' titlesAreSimilar: exact match or containment with length ratio > 0.6
+    function titlesMatch(a, b) {
+        const na = a.toLowerCase().trim();
+        const nb = b.toLowerCase().trim();
+        if (na === nb) return true;
+        if (na.length > 3 && nb.length > 3 && (na.includes(nb) || nb.includes(na))) {
+            return Math.min(na.length, nb.length) / Math.max(na.length, nb.length) > 0.6;
+        }
+        return false;
+    }
+
+    // Compare all pairs — cluster if title matches OR full-text trigram similarity meets threshold
     for (let i = 0; i < entries.length; i++) {
         for (let j = i + 1; j < entries.length; j++) {
             const textA = `${entries[i].title} ${entries[i].content}`.toLowerCase();
             const textB = `${entries[j].title} ${entries[j].content}`.toLowerCase();
-            if (trigramSimilarity(textA, textB) >= threshold) {
+            if (titlesMatch(entries[i].title, entries[j].title) || trigramSimilarity(textA, textB) >= threshold) {
                 union(entries[i].uid, entries[j].uid);
             }
         }
