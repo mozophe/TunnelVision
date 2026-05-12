@@ -34,7 +34,8 @@ import { getDefinition as getReorganizeDef } from './tools/reorganize.js';
 import { getDefinition as getMergeSplitDef } from './tools/merge-split.js';
 import { logSidecarWrite } from './activity-feed.js';
 import { saveSettingsDebounced } from '../../../../script.js';
-import { applyBackgroundPromptAddendum, buildLanguageDirective } from './agent-utils.js';
+import { applyBackgroundPromptAddendum, buildLanguageDirective, trigramSimilarity } from './agent-utils.js';
+import { DEDUP_SIMILARITY_THRESHOLD } from './constants.js';
 
 // ─── Turn Snapshots (for undos) ──────────────────────────────────
 
@@ -255,6 +256,33 @@ function formatRecentOperations(chatId) {
     return text;
 }
 
+// ─── Summary Dedup ───────────────────────────────────────────────
+
+/**
+ * Load title+body text from all existing [Summary] entries across the given books.
+ * Strips the "[Summary] " prefix from comment and the metadata header from content
+ * so the comparison is apples-to-apples against op.title + op.summary.
+ * @param {string[]} bookNames
+ * @returns {Promise<string[]>}
+ */
+async function loadSummaryTexts(bookNames) {
+    const texts = [];
+    for (const bookName of bookNames) {
+        const bookData = await loadWorldInfo(bookName);
+        if (!bookData?.entries) continue;
+        for (const e of Object.values(bookData.entries)) {
+            if (e.disable) continue;
+            if (!(e.comment || '').startsWith('[Summary]')) continue;
+            const title = (e.comment || '').replace(/^\[Summary\]\s*/, '').trim();
+            const rawContent = e.content || '';
+            const bodyStart = rawContent.indexOf('\n\n');
+            const body = bodyStart >= 0 ? rawContent.slice(bodyStart + 2) : rawContent;
+            texts.push(`${title} ${body}`.toLowerCase());
+        }
+    }
+    return texts;
+}
+
 // ─── Tree Overview (shared format with sidecar-retrieval.js) ─────
 
 /**
@@ -403,7 +431,7 @@ Rules:
 - "remember" entries are NEW facts/events not already in the lorebook
 - "update" entries modify EXISTING entries (you must reference the UID)
 - "merge" consolidates two EXISTING entries that overlap — specify keep_uid (entry to keep) and remove_uid (entry to absorb)
-- "summarize" creates a scene/event summary for significant narrative beats (filed under a Summaries category)
+- "summarize" creates a permanent narrative record — use ONLY for: first meetings of important characters, arc-ending events, major revelations, character deaths or departures, turning points that definitively change the story direction. Do NOT use for routine dialogue, incremental roleplay, or content already covered by a recent Summaries entry.
 - "forget" disables entries that are no longer relevant (character died, fact proven false, info outdated)
 - "reorganize" moves entries between tree nodes or creates new categories for better organization
 - "split" divides one entry that covers multiple topics into two focused entries
@@ -437,7 +465,7 @@ CRITICAL — Updates must be surgical:
 CRITICAL — Housekeeping:
 - Use "forget" sparingly — only when information is definitively wrong or permanently irrelevant
 - Use "reorganize" when entries are clearly in the wrong category
-- Use "summarize" for significant scenes or narrative beats that should be preserved as events
+- Use "summarize" sparingly — 0 per turn is the norm. Never create a summary when an existing Summaries entry already covers the same scene or session. When in doubt, skip it.
 - Do NOT over-organize — only reorganize when there's a clear structural problem
 
 Response format:
@@ -900,8 +928,31 @@ export async function runSidecarWriter(messageId = null) {
         const maxOps = settings.sidecarWriterMaxOps ?? 5;
         const capped = ops.slice(0, maxOps);
 
+        // Dedup summarize ops — skip if near-identical to an existing summary entry
+        let summaryTexts = null;
+        const dedupedOps = [];
+        for (const op of capped) {
+            if (op.type === 'summarize') {
+                if (!summaryTexts) {
+                    summaryTexts = await loadSummaryTexts(activeBooks);
+                }
+                const newText = `${op.title || ''} ${op.summary || ''}`.toLowerCase();
+                const isDupe = summaryTexts.some(t => trigramSimilarity(newText, t) >= DEDUP_SIMILARITY_THRESHOLD);
+                if (isDupe) {
+                    console.log(`[TunnelVision] Sidecar writer: skipping duplicate summary "${op.title}"`);
+                    continue;
+                }
+                summaryTexts.push(newText);
+            }
+            dedupedOps.push(op);
+        }
+        if (dedupedOps.length === 0) {
+            console.log('[TunnelVision] Sidecar post-gen writer: all ops filtered by dedup');
+            return;
+        }
+
         // Execute writes
-        const { succeeded, failed, results } = await executeWriteOps(capped, reasoning, messageId);
+        const { succeeded, failed, results } = await executeWriteOps(dedupedOps, reasoning, messageId);
 
         // Explicitly refresh UI after all modifications are complete
         const { refreshUI } = await import('./ui-controller.js');
@@ -909,7 +960,7 @@ export async function runSidecarWriter(messageId = null) {
 
         const _writerModel = getSidecarModelLabel() || 'unknown';
         console.log(
-            `[TunnelVision] Sidecar post-gen writer [${_writerModel}]: ${succeeded} succeeded, ${failed} failed out of ${capped.length} operations`,
+            `[TunnelVision] Sidecar post-gen writer [${_writerModel}]: ${succeeded} succeeded, ${failed} failed out of ${dedupedOps.length} operations`,
         );
         for (const r of results) {
             console.debug(`  ${r}`);
@@ -917,7 +968,7 @@ export async function runSidecarWriter(messageId = null) {
 
         console.groupCollapsed(`[TunnelVision] Sidecar writer details (${_writerModel})`);
         if (reasoning) console.log('Reasoning:', reasoning);
-        for (const op of capped) {
+        for (const op of dedupedOps) {
             if (op.type === 'remember') {
                 console.log(`📝 Remember: "${op.title}" → ${op.lorebook || '(auto)'}`);
                 console.log(`   Content: ${(op.content || '').substring(0, 200)}${(op.content || '').length > 200 ? '...' : ''}`);
