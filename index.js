@@ -32,10 +32,7 @@ import { initActivityFeed } from './activity-feed.js';
 import { initCommands } from './commands.js';
 import { initAutoSummary } from './auto-summary.js';
 import { initPostTurnProcessor } from './post-turn-processor.js';
-import { initMemoryLifecycle } from './memory-lifecycle.js';
-import { initSmartContext, initHierarchyRefs } from './smart-context.js';
-import { initWorldState } from './world-state.js';
-import { clearSidecarRetrievalPrompt, runSidecarRetrieval } from './sidecar-retrieval.js';
+import { runSidecarRetrieval } from './sidecar-retrieval.js';
 import { runSidecarWriter } from './sidecar-writer.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names } from '../../../world-info.js';
@@ -81,17 +78,6 @@ async function init() {
 
     // Wire up post-turn processor (tracker updates, fact extraction, scene archiving)
     initPostTurnProcessor();
-
-    // Wire up rolling world state, smart-context prewarm, and lifecycle maintenance
-    initWorldState();
-    initSmartContext();
-    initMemoryLifecycle();
-    try {
-        const { getRolledUpSceneUids } = await import('./summary-hierarchy.js');
-        initHierarchyRefs({ getRolledUpSceneUids });
-    } catch (e) {
-        console.warn('[TunnelVision] Summary hierarchy init failed:', e);
-    }
 
     // Inject condition editor into ST's base lorebook editor
     initWIConditionInjector();
@@ -835,42 +821,6 @@ function convertToolChoiceToAnthropicFormat(toolChoice) {
 function onChatCompletionSettingsReady(data) {
     if (!_generationInProgress) return;
 
-    // ── Anthropic format conversion ──────────────────────────────────
-    // ST's ToolManager registers tools in OpenAI function-calling format
-    // ({ type: "function", function: { ... } }). When the active backend
-    // is Anthropic, convert them to the Messages API format so the request
-    // doesn't get rejected with an "invalid input tag" error.
-    //
-    // IMPORTANT: Skip when chat_completion_source === 'claude' (native ST Claude backend).
-    // That backend (sendClaudeRequest) does its own OpenAI→Anthropic conversion for both
-    // tools and tool_choice. Converting here first causes double-wrapping:
-    //   'auto' → { type: 'auto' } [TunnelVision] → { type: { type: 'auto' } } [backend] ← bug
-    // It also causes tools to be filtered out by the backend's .filter(t => t.type === 'function').
-    // Only convert when going through a proxy/custom endpoint that does NOT handle the conversion.
-    if (data.tools?.length && isAnthropicApi(data)) {
-        let isNativeClaudeBackend = false;
-        try {
-            const ctx = getContext();
-            isNativeClaudeBackend = ctx?.chatCompletionSettings?.chat_completion_source === 'claude';
-        } catch { /* ignore */ }
-
-        if (!isNativeClaudeBackend) {
-            const hasOpenAIWrapped = data.tools.some(t => t?.type === 'function' && t.function);
-            if (hasOpenAIWrapped) {
-                data.tools = data.tools.map(convertToolToAnthropicFormat);
-                if (data.tool_choice !== undefined) {
-                    const converted = convertToolChoiceToAnthropicFormat(data.tool_choice);
-                    if (converted === undefined) {
-                        delete data.tool_choice;
-                    } else {
-                        data.tool_choice = converted;
-                    }
-                }
-                console.log(`[TunnelVision] Converted ${data.tools.length} tool(s) from OpenAI to Anthropic format`);
-            }
-        }
-    }
-
     // ── Final-pass tool stripping ────────────────────────────────────
     const recurseLimit = ToolManager.RECURSE_LIMIT ?? 5;
     if (_toolRecursionDepth >= recurseLimit - 1) {
@@ -921,11 +871,6 @@ async function onGenerationStarted(type, opts, dryRun) {
     }
 
     _skipPreCommandGeneration = false;
-    const wasGenerationInProgress = _generationInProgress;
-    if (!wasGenerationInProgress) {
-        // Clean stale tool result tails before classifying recursive passes.
-        cleanOrphanedToolInvocations();
-    }
     _generationInProgress = true;
 
     // Detect recursive tool-call passes FIRST, before any other work.
@@ -933,7 +878,7 @@ async function onGenerationStarted(type, opts, dryRun) {
     // containing the tool results the model needs. We must NOT touch it.
     const context = getContext();
     const lastMsg = context.chat?.[context.chat.length - 1];
-    const isRecursiveToolPass = wasGenerationInProgress && lastMsg?.extra?.tool_invocations != null;
+    const isRecursiveToolPass = lastMsg?.extra?.tool_invocations != null;
     console.debug(`[TunnelVision] GENERATION_STARTED: isRecursiveToolPass=${isRecursiveToolPass} chatLength=${context.chat?.length} lastMsgType=${lastMsg?.is_system ? 'system' : lastMsg?.is_user ? 'user' : 'assistant'} hasToolInvocations=${!!lastMsg?.extra?.tool_invocations}`);
 
     // Track recursion depth so we can strip tools on the final pass
@@ -964,6 +909,12 @@ async function onGenerationStarted(type, opts, dryRun) {
     const settings = getSettings();
     let runtimeState = null;
 
+    // Clean up orphaned tool_invocations at the tail of chat (caused by
+    // regenerate or message deletion leaving tool result messages without
+    // a matching assistant reply). Only on first pass — on recursive passes
+    // the tail message IS the active tool result, not an orphan.
+    cleanOrphanedToolInvocations();
+
     if (settings.globalEnabled !== false) {
         runtimeState = await preflightToolRuntimeState({ repair: true, reason: 'generation', log: true });
     }
@@ -980,8 +931,6 @@ async function onGenerationStarted(type, opts, dryRun) {
         } catch (err) {
             console.error('[TunnelVision] Sidecar auto-retrieval error:', err);
         }
-    } else {
-        clearSidecarRetrievalPrompt(settings);
     }
 
     // Mandatory tool call instruction (only on first pass, not recursive)
@@ -1048,16 +997,6 @@ let _sidecarWriterDebounceTimer = null;
 
 async function onMessageReceived(_messageId, type) {
     console.debug(`[TunnelVision] MESSAGE_RECEIVED: messageId=${_messageId} type="${type}"`);
-    const context = getContext();
-    const messageIndex = Number(_messageId);
-    const receivedMsg = Number.isInteger(messageIndex)
-        ? context.chat?.[messageIndex]
-        : context.chat?.[context.chat.length - 1];
-    if (Array.isArray(receivedMsg?.extra?.tool_invocations) && receivedMsg.extra.tool_invocations.length > 0) {
-        console.debug('[TunnelVision] MESSAGE_RECEIVED contains tool invocations; waiting for recursive final response');
-        return;
-    }
-
     // Clear generation guards BEFORE the sidecar writer runs, so that lorebook
     // writes triggered by the writer do not get blocked by the generation guard.
     _generationInProgress = false;
@@ -1081,6 +1020,7 @@ async function onMessageReceived(_messageId, type) {
     // In group chats, debounce: wait 800ms after the last MESSAGE_RECEIVED
     // before firing the sidecar writer, so we only run once after the
     // final group member's message instead of N times.
+    const context = getContext();
     if (context.groupId) {
         if (_sidecarWriterDebounceTimer) clearTimeout(_sidecarWriterDebounceTimer);
         _sidecarWriterDebounceTimer = setTimeout(async () => {
@@ -1094,13 +1034,11 @@ async function onMessageReceived(_messageId, type) {
         return;
     }
 
-    setTimeout(async () => {
-        try {
-            await runSidecarWriter();
-        } catch (err) {
-            console.error('[TunnelVision] Sidecar post-gen writer error:', err);
-        }
-    }, 0);
+    try {
+        await runSidecarWriter();
+    } catch (err) {
+        console.error('[TunnelVision] Sidecar post-gen writer error:', err);
+    }
 }
 
 /**

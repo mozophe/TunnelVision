@@ -34,7 +34,7 @@ import { eventSource, event_types } from "../../../../script.js";
 import { getContext } from "../../../st-context.js";
 import { getSettings, getTrackerUids, getTree } from "./tree-store.js";
 import { getActiveTunnelVisionBooks, getInjectionManagedBooks } from "./tool-registry.js";
-import { getSelectivelyRetrievedEntryKeys, getSelectivelyRetrievedUids } from "./tools/search.js";
+import { getSelectivelyRetrievedUids } from "./tools/search.js";
 import { getCachedWorldInfoSync, getCachedWorldInfo, getEntryTurnIndex } from "./entry-manager.js";
 import { getEntryTitle, getMaxContextTokens } from "./agent-utils.js";
 import { getWorldStateSections } from "./world-state.js";
@@ -1385,13 +1385,7 @@ export function buildSmartContextPrompt() {
   // trackers/story summaries which are always-inject).
   if (settings.selectiveRetrieval) {
     const selectedUids = getSelectivelyRetrievedUids();
-    const selectedEntryKeys = getSelectivelyRetrievedEntryKeys();
-    if (selectedEntryKeys.size > 0) {
-      candidates = candidates.filter(
-        (c) => selectedEntryKeys.has(`${c.bookName}:${c.entry.uid}`) || c.isTracker || (c.isSummary && isStorySummaryEntry(c.entry)),
-      );
-      if (candidates.length === 0) return "";
-    } else if (selectedUids.size > 0) {
+    if (selectedUids.size > 0) {
       candidates = candidates.filter(
         (c) => selectedUids.has(c.entry.uid) || c.isTracker || (c.isSummary && isStorySummaryEntry(c.entry)),
       );

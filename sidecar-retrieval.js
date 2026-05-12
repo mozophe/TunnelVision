@@ -392,14 +392,8 @@ function parseSidecarResponse(response) {
  * @returns {Promise<string>}
  */
 async function resolveConditionalContent(evaluations, conditionalEntries) {
-    const uidCounts = new Map();
-    for (const ce of conditionalEntries) {
-        uidCounts.set(ce.uid, (uidCounts.get(ce.uid) || 0) + 1);
-    }
     const acceptedUids = new Set(
-        evaluations
-            .filter(e => e.accepted && uidCounts.get(e.uid) === 1)
-            .map(e => e.uid),
+        evaluations.filter(e => e.accepted).map(e => e.uid),
     );
     if (acceptedUids.size === 0) return '';
 
@@ -429,7 +423,6 @@ async function resolveConditionalContent(evaluations, conditionalEntries) {
  */
 export async function runSidecarRetrieval() {
     const settings = getSettings();
-    clearSidecarRetrievalPrompt(settings);
 
     // Guard: must be enabled and sidecar must be configured
     if (!settings.sidecarAutoRetrieval) return;
@@ -484,10 +477,7 @@ export async function runSidecarRetrieval() {
         // Injection settings
         const position = mapPosition(settings.mandatoryPromptPosition);
         const depth = settings.mandatoryPromptDepth ?? 1;
-        const roleSetting = (settings.mandatoryPromptPosition === 'in_chat' && settings.mandatoryPromptRole === 'user')
-            ? 'system'
-            : settings.mandatoryPromptRole;
-        const role = mapRole(roleSetting);
+        const role = mapRole(settings.mandatoryPromptRole);
         const maxChars = (settings.sidecarMaxInjectionTokens ?? 4000) * 4;
 
         // Resolve node content (tree-based retrieval)
@@ -570,17 +560,12 @@ export async function runSidecarRetrieval() {
  * Clear the sidecar retrieval prompt (no content to inject).
  * @param {Object} settings
  */
-export function clearSidecarRetrievalPrompt(settings = getSettings()) {
+function clearRetrievalPrompt(settings) {
     const position = mapPosition(settings.mandatoryPromptPosition);
     const depth = settings.mandatoryPromptDepth ?? 1;
-    const roleSetting = (settings.mandatoryPromptPosition === 'in_chat' && settings.mandatoryPromptRole === 'user')
-        ? 'system'
-        : settings.mandatoryPromptRole;
-    const role = mapRole(roleSetting);
+    const role = mapRole(settings.mandatoryPromptRole);
     setExtensionPrompt(TV_SIDECAR_RETRIEVAL_KEY, '', position, depth, false, role);
 }
-
-const clearRetrievalPrompt = clearSidecarRetrievalPrompt;
 
 /**
  * Map position setting to ST enum.
