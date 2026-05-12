@@ -817,7 +817,6 @@
         height: 44px;
         font-size: 17px;
         bottom: 120px;
-        top: 450px;
     }
 
     /* Mobile: full-width panel */
@@ -989,6 +988,12 @@
     /* --- Confirmation popup --- */
     .tv-confirm-args {
         max-height: 200px;
+    }
+    .tv-confirm-diff {
+        max-height: 240px;
+    }
+    .tv-confirm-pre {
+        max-height: 180px;
     }
 
     /* --- Tool prompt overrides --- */
@@ -2737,6 +2742,27 @@
 .tv-confirm-args { background: rgba(0,0,0,0.15); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-size: 12px; max-height: 300px; overflow-y: auto; }
 .tv-confirm-args > div { margin-bottom: 4px; word-break: break-word; }
 .tv-confirm-hint { font-size: 11px; opacity: 0.6; }
+
+/* Long value collapsible inside args */
+.tv-confirm-longval { margin-top: 2px; }
+.tv-confirm-longval summary { cursor: pointer; opacity: 0.85; list-style: none; }
+.tv-confirm-longval summary::-webkit-details-marker { display: none; }
+.tv-confirm-longval summary::before { content: '▶ '; font-size: 9px; opacity: 0.6; }
+.tv-confirm-longval[open] summary::before { content: '▼ '; }
+.tv-confirm-pre { margin: 6px 0 0; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; white-space: pre-wrap; word-break: break-word; font-family: monospace; font-size: 11px; max-height: 300px; overflow-y: auto; }
+
+/* Diff block */
+.tv-confirm-diff-wrap { margin-bottom: 10px; }
+.tv-confirm-diff-wrap summary,
+.tv-confirm-diff-label { font-size: 12px; font-weight: 600; margin-bottom: 6px; cursor: pointer; }
+.tv-confirm-diff-summary { list-style: none; }
+.tv-confirm-diff-summary::-webkit-details-marker { display: none; }
+.tv-confirm-diff-summary::before { content: '▶ '; font-size: 9px; opacity: 0.6; }
+details.tv-confirm-diff-wrap[open] .tv-confirm-diff-summary::before { content: '▼ '; }
+.tv-confirm-diff { font-family: monospace; font-size: 11px; line-height: 1.5; background: rgba(0,0,0,0.18); border-radius: 6px; padding: 8px 10px; max-height: 380px; overflow-y: auto; }
+.tv-diff-add { color: #7ec88a; background: rgba(100,200,100,0.08); padding: 1px 4px; border-radius: 2px; white-space: pre-wrap; word-break: break-word; }
+.tv-diff-remove { color: #e07070; background: rgba(220,80,80,0.08); padding: 1px 4px; border-radius: 2px; white-space: pre-wrap; word-break: break-word; text-decoration: line-through; }
+.tv-diff-same { opacity: 0.45; padding: 1px 4px; white-space: pre-wrap; word-break: break-word; }
 
 /* ===== Tool Prompt Overrides ===== */
 .tv-tool-prompt-overrides { display: flex; flex-direction: column; gap: 12px; }

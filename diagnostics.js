@@ -18,7 +18,10 @@ import {
     deleteTree,
     getBookDescription,
     isTrackerTitle,
+    isNativeInjectionBook,
+    setBookInjectionMode,
 } from './tree-store.js';
+import { getCachedWorldInfoSync } from './entry-manager.js';
 import { getContext } from '../../../st-context.js';
 import { getActiveTunnelVisionBooks, ALL_TOOL_NAMES, CONFIRMABLE_TOOLS, preflightToolRuntimeState } from './tool-registry.js';
 import { hasEvaluableConditions, separateConditions, formatCondition, getKeywordProbability } from './conditions.js';
@@ -92,11 +95,13 @@ export async function runDiagnostics() {
     results.push(checkConstantPassthrough());
     results.push(...checkBookDescriptions());
     results.push(...checkBookPermissions());
+    results.push(...checkNativeInjectionBooks());
     results.push(checkSidecarAutoRetrieval());
     results.push(checkConditionalTriggers());
     results.push(...await checkKeywordProbabilities());
     results.push(checkSidecarPostGenWriter());
     results.push(checkTurnSummaryEvent());
+    results.push(...await checkOutletEntriesMissingName());
 
     const settingsAfter = JSON.stringify(getSettings());
     if (settingsBefore !== settingsAfter) {
@@ -1170,7 +1175,7 @@ async function checkSidecarConfig() {
 
     // Verify API key is available via ST's secrets system
     try {
-        const { fetchSecretKey } = await import('./llm-sidecar.js');
+        const { fetchSecretKey, isSidecarKeyAvailable } = await import('./llm-sidecar.js');
         const PROVIDER_SECRET_MAP = {
             openai: 'api_key_openai', claude: 'api_key_claude', openrouter: 'api_key_openrouter',
             makersuite: 'api_key_makersuite', deepseek: 'api_key_deepseek', mistralai: 'api_key_mistralai',
@@ -1180,7 +1185,10 @@ async function checkSidecarConfig() {
         if (secretKey) {
             const key = await fetchSecretKey(secretKey);
             if (!key) {
-                return warn(`Sidecar: No API key found for "${profile.api}". Add your key in ST's API settings and ensure allowKeysExposure is enabled in config.yaml.`);
+                if (!isSidecarKeyAvailable()) {
+                    return warn(`Sidecar: API key access was denied (HTTP 403). Set "allowKeysExposure: true" in SillyTavern\'s config.yaml so TunnelVision can read keys for direct sidecar calls.`);
+                }
+                return warn(`Sidecar: No API key found for "${profile.api}". Add your key in ST\'s API settings.`);
             }
         }
     } catch (e) {
@@ -1471,6 +1479,65 @@ function checkBookPermissions() {
     return results;
 }
 
+function checkNativeInjectionBooks() {
+    const results = [];
+    const settings = getSettings();
+    const enabledBooks = Object.keys(settings.enabledLorebooks || {}).filter(b => settings.enabledLorebooks[b]);
+    const nativeBooks = enabledBooks.filter(b => isNativeInjectionBook(b));
+
+    if (nativeBooks.length === 0) return results;
+
+    // Info: list native-injection books
+    results.push({
+        id: 'native-injection-books',
+        severity: 'info',
+        title: 'Native injection mode active',
+        message: `${nativeBooks.length} lorebook(s) use native injection: ${nativeBooks.join(', ')}. ST handles their entry positions/outlets — TV will not suppress or re-inject these entries.`,
+    });
+
+    // Warning: native book with no outlet/position entries
+    for (const bookName of nativeBooks) {
+        try {
+            const bookData = getCachedWorldInfoSync(bookName);
+            if (!bookData?.entries) continue;
+
+            const entries = Object.values(bookData.entries).filter(e => !e.disable);
+            const outletEntries = entries.filter(e => e.position === 7 && e.outletName);
+            const depthEntries = entries.filter(e => e.position !== undefined && e.position !== 0 && e.position !== 7);
+
+            if (outletEntries.length === 0 && depthEntries.length === 0 && entries.length > 0) {
+                results.push({
+                    id: `native-no-positions-${bookName}`,
+                    severity: 'warning',
+                    title: `Native book "${bookName}" has no positioned entries`,
+                    message: `This book is in native injection mode but none of its ${entries.length} entries use outlets or custom positions. They will all inject at ST's default position (before character definition). Consider using sidecar mode instead, or configure outlet/position on entries.`,
+                    fix: {
+                        label: 'Switch to sidecar mode',
+                        action: () => {
+                            setBookInjectionMode(bookName, 'sidecar');
+                        },
+                    },
+                });
+            }
+
+            // Check for outlet entries with missing outlet name
+            const brokenOutlets = entries.filter(e => e.position === 7 && !e.outletName);
+            if (brokenOutlets.length > 0) {
+                results.push({
+                    id: `native-broken-outlets-${bookName}`,
+                    severity: 'error',
+                    title: `"${bookName}" has ${brokenOutlets.length} outlet entries with no outlet name`,
+                    message: `These entries are set to outlet position but have no outletName — they will be silently skipped by ST. UIDs: ${brokenOutlets.map(e => e.uid).join(', ')}`,
+                });
+            }
+        } catch (e) {
+            // Book data not cached yet, skip
+        }
+    }
+
+    return results;
+}
+
 function checkSidecarAutoRetrieval() {
     const settings = getSettings();
     if (!settings.sidecarAutoRetrieval) {
@@ -1574,6 +1641,41 @@ async function checkKeywordProbabilities() {
         results.push(pass(`Keyword probabilities: ${totalProbs - staleProbs} active across all entries`));
     } else {
         results.push(pass('Keyword probabilities: none configured (all keywords fire at 100%)'));
+    }
+
+    return results;
+}
+
+/** Check for TV-managed entries that have position=outlet but no outletName set. */
+async function checkOutletEntriesMissingName() {
+    const results = [];
+    const activeBooks = getActiveTunnelVisionBooks();
+    const OUTLET_POSITION = 7;
+
+    for (const bookName of activeBooks) {
+        const bookData = await loadWorldInfo(bookName);
+        if (!bookData || !bookData.entries) continue;
+
+        const broken = [];
+        for (const key of Object.keys(bookData.entries)) {
+            const entry = bookData.entries[key];
+            if (entry.disable) continue;
+            if (entry.position === OUTLET_POSITION && !entry.outletName) {
+                broken.push(entry.comment ? String(entry.comment) : String(entry.uid));
+            }
+        }
+
+        if (broken.length > 0) {
+            results.push(warn(
+                `${bookName} has ${broken.length} outlet-position entry(ies) with no outlet name — they will not inject anywhere. Set an outlet name matching an {{outlet::name}} macro in your prompt. Affected: ${broken.slice(0, 3).join(', ')}${broken.length > 3 ? ` (+${broken.length - 3} more)` : ''}.`
+            ));
+        } else {
+            const entries = Object.values(bookData.entries);
+            const outletCount = entries.filter(e => !e.disable && e.position === OUTLET_POSITION).length;
+            if (outletCount > 0) {
+                results.push(pass(`${bookName}: ${outletCount} outlet-position entr${outletCount === 1 ? 'y has' : 'ies have'} outlet names set`));
+            }
+        }
     }
 
     return results;

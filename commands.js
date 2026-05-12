@@ -1,29 +1,35 @@
 /**
  * TunnelVision Slash Commands
  * Registers /tv-* slash commands for forcing tool actions.
- * Uses generateQuietPrompt for silent tool execution — no visible messages, no narrative output.
+ *
+ * Commands use generateAnalytical() for LLM reasoning, then call entry-manager
+ * functions directly for CRUD. No generateQuietPrompt — no hoping the chat model
+ * decides to call a tool.
  *
  * Commands:
- *   /tv-search [query]     — Force a lorebook search
- *   /tv-remember [content] — Force saving to memory (detects schema design requests)
- *   /tv-summarize [title]  — Force a scene summary
- *   /tv-forget [name]      — Force forgetting an entry
- *   /tv-merge [entries]    — Force merging entries
- *   /tv-split [entry]      — Force splitting an entry
+ *   /tv-search [query]     — Search lorebook entries
+ *   /tv-remember [content] — Save content to memory
+ *   /tv-summarize [title]  — Create a scene summary
+ *   /tv-forget [name]      — Forget/disable an entry
+ *   /tv-merge [hint]       — Merge two specific related entries
+ *   /tv-split [hint]       — Split a multi-topic entry
+ *   /tv-dedupe [lorebook]  — Batch-merge all duplicate clusters
  *   /tv-ingest [lorebook]  — Ingest recent chat messages (no generation)
  *
  * Settings consumed (from tree-store.js getSettings()):
  *   commandContextMessages number   default 50
  */
 
-import { generateQuietPrompt } from '../../../../script.js';
 import { getContext } from '../../../st-context.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandArgument, ARGUMENT_TYPE } from '../../../slash-commands/SlashCommandArgument.js';
-import { getSettings, getSelectedLorebook } from './tree-store.js';
-import { getActiveTunnelVisionBooks } from './tool-registry.js';
+import { loadWorldInfo } from '../../../world-info.js';
+import { getSettings, getSelectedLorebook, getTree, createTreeNode, saveTree, findNodeById } from './tree-store.js';
+import { getActiveTunnelVisionBooks, resolveTargetBook } from './tool-registry.js';
 import { ingestChatMessages } from './tree-builder.js';
+import { createEntry, mergeEntries, splitEntry, forgetEntry, updateEntry, findEntryByUid } from './entry-manager.js';
+import { generateAnalytical, getStoryContext, trigramSimilarity } from './agent-utils.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -50,7 +56,7 @@ function registerSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'tv-search',
         callback: wrapCallback(handleSearch),
-        helpString: 'Force a TunnelVision lorebook search.',
+        helpString: 'Search TunnelVision lorebook entries.',
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
                 description: 'Search query',
@@ -64,7 +70,7 @@ function registerSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'tv-remember',
         callback: wrapCallback(handleRemember),
-        helpString: 'Force saving content to TunnelVision memory. Detects schema/tracker design requests.',
+        helpString: 'Save content to TunnelVision memory.',
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
                 description: 'Content to remember',
@@ -78,7 +84,7 @@ function registerSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'tv-summarize',
         callback: wrapCallback(handleSummarize),
-        helpString: 'Force a TunnelVision scene summary.',
+        helpString: 'Create a TunnelVision scene summary from recent chat.',
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
                 description: 'Summary title',
@@ -92,10 +98,10 @@ function registerSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'tv-forget',
         callback: wrapCallback(handleForget),
-        helpString: 'Force forgetting a TunnelVision lorebook entry.',
+        helpString: 'Forget/disable a TunnelVision lorebook entry.',
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
-                description: 'Entry name to forget',
+                description: 'Entry name or UID to forget',
                 typeList: [ARGUMENT_TYPE.STRING],
                 isRequired: false,
             }),
@@ -106,10 +112,10 @@ function registerSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'tv-merge',
         callback: wrapCallback(handleMerge),
-        helpString: 'Force merging TunnelVision lorebook entries.',
+        helpString: 'Merge duplicate/related TunnelVision lorebook entries.',
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
-                description: 'Entries to merge',
+                description: 'Hint about which entries to merge (optional — auto-detects duplicates)',
                 typeList: [ARGUMENT_TYPE.STRING],
                 isRequired: false,
             }),
@@ -120,10 +126,24 @@ function registerSlashCommands() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'tv-split',
         callback: wrapCallback(handleSplit),
-        helpString: 'Force splitting a TunnelVision lorebook entry.',
+        helpString: 'Split a multi-topic TunnelVision lorebook entry into focused pieces.',
         unnamedArgumentList: [
             SlashCommandArgument.fromProps({
-                description: 'Entry to split',
+                description: 'Entry name or UID to split',
+                typeList: [ARGUMENT_TYPE.STRING],
+                isRequired: false,
+            }),
+        ],
+        returns: 'empty string',
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'tv-dedupe',
+        callback: wrapCallback(handleDedupe),
+        helpString: 'Batch-merge all duplicate/near-duplicate entries in a TunnelVision lorebook. Moves absorbed entries to a "Deduped" node for review.',
+        unnamedArgumentList: [
+            SlashCommandArgument.fromProps({
+                description: 'Target lorebook name (optional if only one active)',
                 typeList: [ARGUMENT_TYPE.STRING],
                 isRequired: false,
             }),
@@ -150,11 +170,6 @@ function registerSlashCommands() {
 // Callback wrapper — shared precondition checks + error handling
 // ---------------------------------------------------------------------------
 
-/**
- * Wrap a command handler with standard precondition checks and error handling.
- * @param {function} handler - The actual command handler (receives namedArgs, unnamedArg).
- * @returns {function} Wrapped callback compatible with SlashCommand.
- */
 function wrapCallback(handler) {
     return async function (namedArgs, unnamedArg) {
         try {
@@ -180,84 +195,7 @@ function wrapCallback(handler) {
 }
 
 // ---------------------------------------------------------------------------
-// Command handlers
-// ---------------------------------------------------------------------------
-
-async function handleSearch(_namedArgs, unnamedArg, { activeBooks }) {
-    const targetLorebook = resolveCurrentLorebook(activeBooks);
-    const query = String(unnamedArg || '').trim() || 'recent relevant information';
-    const prompt = buildCommandPrompt({ command: 'search', arg: query }, getContextMessages(), activeBooks, targetLorebook);
-
-    toastr.info('Searching lorebook...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Search complete.', 'TunnelVision');
-}
-
-async function handleRemember(_namedArgs, unnamedArg, { activeBooks }) {
-    const targetLorebook = resolveCurrentLorebook(activeBooks);
-    const content = String(unnamedArg || '').trim() || 'Remember important details from the recent conversation';
-    const prompt = buildCommandPrompt({ command: 'remember', arg: content }, getContextMessages(), activeBooks, targetLorebook);
-
-    toastr.info('Saving to memory...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Memory saved.', 'TunnelVision');
-}
-
-async function handleSummarize(_namedArgs, unnamedArg, { activeBooks }) {
-    const targetLorebook = resolveCurrentLorebook(activeBooks);
-    const title = String(unnamedArg || '').trim() || 'Summarize recent events';
-    const prompt = buildCommandPrompt({ command: 'summarize', arg: title }, getContextMessages(), activeBooks, targetLorebook);
-
-    toastr.info('Creating summary...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Summary created.', 'TunnelVision');
-}
-
-async function handleForget(_namedArgs, unnamedArg, { activeBooks }) {
-    const targetLorebook = resolveCurrentLorebook(activeBooks);
-    const name = String(unnamedArg || '').trim() || 'the specified entry';
-    const prompt = buildCommandPrompt({ command: 'forget', arg: name }, getContextMessages(), activeBooks, targetLorebook);
-
-    toastr.info('Forgetting entry...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Entry forgotten.', 'TunnelVision');
-}
-
-async function handleMerge(_namedArgs, unnamedArg, { activeBooks }) {
-    const targetLorebook = resolveCurrentLorebook(activeBooks);
-    const target = String(unnamedArg || '').trim() || 'the two most related or overlapping entries';
-    const prompt = buildCommandPrompt({ command: 'merge', arg: target }, getContextMessages(), activeBooks, targetLorebook);
-
-    toastr.info('Merging entries...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Entries merged.', 'TunnelVision');
-}
-
-async function handleSplit(_namedArgs, unnamedArg, { activeBooks }) {
-    const targetLorebook = resolveCurrentLorebook(activeBooks);
-    const target = String(unnamedArg || '').trim() || 'the entry that covers too many topics';
-    const prompt = buildCommandPrompt({ command: 'split', arg: target }, getContextMessages(), activeBooks, targetLorebook);
-
-    toastr.info('Splitting entry...', 'TunnelVision');
-    await generateQuietPrompt(prompt);
-    toastr.success('Entry split.', 'TunnelVision');
-}
-
-async function handleIngestCommand(_namedArgs, unnamedArg, { activeBooks }) {
-    const targetLorebook = resolveIngestLorebook(activeBooks, String(unnamedArg || '').trim());
-    if (!targetLorebook) {
-        toastr.warning(
-            'Multiple TunnelVision lorebooks are active. Use "/tv-ingest <lorebook name>" or select the lorebook in TunnelVision first.',
-            'TunnelVision',
-        );
-        return;
-    }
-
-    await handleIngest(targetLorebook, getContextMessages());
-}
-
-// ---------------------------------------------------------------------------
-// Lorebook resolvers
+// Shared helpers
 // ---------------------------------------------------------------------------
 
 function resolveCurrentLorebook(activeBooks) {
@@ -265,139 +203,694 @@ function resolveCurrentLorebook(activeBooks) {
     if (selectedLorebook && activeBooks.includes(selectedLorebook)) {
         return selectedLorebook;
     }
-
     return activeBooks.length === 1 ? activeBooks[0] : null;
 }
 
-function resolveIngestLorebook(activeBooks, arg) {
-    const requested = String(arg || '').trim();
-    if (requested) {
-        return activeBooks.find(bookName => bookName.toLowerCase() === requested.toLowerCase()) || null;
+function resolveBook(activeBooks) {
+    const name = resolveCurrentLorebook(activeBooks);
+    if (!name && activeBooks.length > 1) {
+        toastr.warning('Multiple lorebooks active — select one in TunnelVision settings first.', 'TunnelVision');
+        return null;
     }
-
-    return resolveCurrentLorebook(activeBooks);
+    return name || activeBooks[0];
 }
 
-function buildLorebookInstruction(activeBooks, targetLorebook) {
-    if (targetLorebook) {
-        return `Use lorebook "${targetLorebook}". `;
-    }
-
-    if (activeBooks.length > 1) {
-        return `Active lorebooks: ${activeBooks.join(', ')}. Choose the correct lorebook explicitly for any tool that requires a lorebook argument. `;
-    }
-
-    if (activeBooks.length === 1) {
-        return `Use lorebook "${activeBooks[0]}". `;
-    }
-
-    return '';
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Get the configured context message count from settings.
- * @returns {number}
- */
 function getContextMessages() {
     const settings = getSettings();
     return Number(settings.commandContextMessages) || 50;
 }
 
-// ---------------------------------------------------------------------------
-// Prompt builder
-// ---------------------------------------------------------------------------
+/**
+ * Build a compact entry listing from a lorebook for LLM consumption.
+ * @returns {Promise<string>} Formatted entry list, or empty string
+ */
+async function buildEntryListing(bookName) {
+    const bookData = await loadWorldInfo(bookName);
+    if (!bookData?.entries) return '';
 
-function buildCommandPrompt({ command, arg }, contextMessages, activeBooks, targetLorebook) {
-    const lorebookInstruction = buildLorebookInstruction(activeBooks, targetLorebook);
+    const lines = [];
+    for (const entry of Object.values(bookData.entries)) {
+        if (entry.disable) continue;
+        const title = (entry.comment || '').trim() || `Entry #${entry.uid}`;
+        const preview = (entry.content || '').substring(0, 120).replace(/\n/g, ' ');
+        lines.push(`- UID ${entry.uid}: "${title}" — ${preview}`);
+    }
+    return lines.join('\n');
+}
 
-    switch (command) {
-        case 'summarize': {
-            const title = arg || 'Summarize recent events';
-            return (
-                `[INSTRUCTION: You MUST call TunnelVision_Summarize this turn. ` +
-                lorebookInstruction +
-                `Title: "${title}". ` +
-                `Review the last ${contextMessages} messages and create a thorough summary. ` +
-                `Provide the lorebook, title, and summary fields explicitly.]`
-            );
-        }
-        case 'remember': {
-            const content = arg || 'Remember important details from the recent conversation';
-            const isSchemaRequest = /\b(design|schema|track(er|ing)?|template|format|struct(ure)?)\b/i.test(content);
-            if (isSchemaRequest) {
-                return (
-                    `[INSTRUCTION: You MUST call TunnelVision_Remember this turn. ` +
-                    lorebookInstruction +
-                    `The user wants you to design a tracker schema. Based on their request: "${content}" - ` +
-                    `propose a well-structured format using headers, bullet points, and key:value pairs that will be easy to update each turn with TunnelVision_Update. ` +
-                    `Include placeholder values that demonstrate the format. Make it comprehensive but organized. ` +
-                    `Save it with a clear "[Tracker]" prefix in the title.]`
-                );
-            }
+/**
+ * Get recent chat as a compact text block for LLM context.
+ */
+function getRecentChat(messageCount) {
+    try {
+        const context = getContext();
+        const chat = context?.chat;
+        if (!chat || chat.length === 0) return '';
 
-            return (
-                `[INSTRUCTION: You MUST call TunnelVision_Remember this turn. ` +
-                lorebookInstruction +
-                `Save the following to memory with explicit lorebook, title, and content fields: "${content}".]`
-            );
+        const start = Math.max(0, chat.length - messageCount);
+        const lines = [];
+        for (let i = start; i < chat.length; i++) {
+            const msg = chat[i];
+            if (msg.is_system) continue;
+            const name = msg.is_user ? (context.name1 || 'User') : (msg.name || context.name2 || 'AI');
+            const text = (msg.mes || '').substring(0, 300);
+            lines.push(`${name}: ${text}`);
         }
-        case 'search': {
-            const query = arg || 'recent relevant information';
-            return (
-                `[INSTRUCTION: You MUST call TunnelVision_Search this turn. ` +
-                `Navigate the TunnelVision tree, then retrieve the most relevant node content for: "${query}". ` +
-                (targetLorebook ? `If multiple lorebooks are active, prefer "${targetLorebook}" when the query is ambiguous. ` : '') +
-                `Use the node_id/node_ids and action fields that the search tool expects.]`
-            );
+        return lines.join('\n');
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Parse JSON from an LLM response, handling markdown fences.
+ */
+function parseJSON(text) {
+    if (!text) return null;
+    // Strip markdown code fences
+    const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '').trim();
+    try {
+        return JSON.parse(stripped);
+    } catch {
+        // Try to find the first { or [ and parse from there
+        const start = stripped.search(/[{[]/);
+        if (start >= 0) {
+            try { return JSON.parse(stripped.substring(start)); } catch { /* fall through */ }
         }
-        case 'forget': {
-            const name = arg || 'the specified entry';
-            return (
-                `[INSTRUCTION: You MUST call TunnelVision_Forget this turn. ` +
-                lorebookInstruction +
-                `First use TunnelVision_Search to locate the correct entry for "${name}". ` +
-                `Then call TunnelVision_Forget with the exact lorebook, uid, and a brief reason.]`
-            );
-        }
-        case 'merge': {
-            const target = arg || 'the two most related or overlapping entries';
-            return (
-                `[INSTRUCTION: You MUST call TunnelVision_MergeSplit with action "merge" this turn. ` +
-                lorebookInstruction +
-                `First use TunnelVision_Search to find the exact lorebook and UIDs for: "${target}". ` +
-                `Then call TunnelVision_MergeSplit with action "merge", keep_uid, remove_uid, and rewritten merged content/title if needed. ` +
-                `Rewrite the merged content to be clean and consolidated.]`
-            );
-        }
-        case 'split': {
-            const target = arg || 'the entry that covers too many topics';
-            return (
-                `[INSTRUCTION: You MUST call TunnelVision_MergeSplit with action "split" this turn. ` +
-                lorebookInstruction +
-                `First use TunnelVision_Search to find the exact lorebook and UID for: "${target}". ` +
-                `Then call TunnelVision_MergeSplit with action "split", uid, keep_content, new_content, and new_title. ` +
-                `Each resulting entry should cover one focused topic.]`
-            );
-        }
-        default:
-            return '';
+        return null;
     }
 }
 
 // ---------------------------------------------------------------------------
-// Ingest handler
+// Command handlers — generateAnalytical for reasoning, direct CRUD for action
 // ---------------------------------------------------------------------------
 
+async function handleSearch(_namedArgs, unnamedArg, { activeBooks }) {
+    const bookName = resolveBook(activeBooks);
+    if (!bookName) return;
+
+    const query = String(unnamedArg || '').trim();
+    if (!query) {
+        toastr.warning('Usage: /tv-search <query>', 'TunnelVision');
+        return;
+    }
+
+    const entryList = await buildEntryListing(bookName);
+    if (!entryList) {
+        toastr.warning(`No entries found in "${bookName}".`, 'TunnelVision');
+        return;
+    }
+
+    toastr.info('Searching...', 'TunnelVision');
+
+    const prompt = `Search this lorebook for entries relevant to: "${query}"
+
+ENTRIES IN "${bookName}":
+${entryList}
+
+Return JSON: { "results": [{ "uid": <number>, "title": "<string>", "relevance": "<why this matches>" }] }
+Return only the most relevant entries (max 10). If nothing matches, return { "results": [] }.`;
+
+    const response = await generateAnalytical({ prompt });
+    const parsed = parseJSON(response);
+
+    if (!parsed?.results?.length) {
+        toastr.info('No matching entries found.', 'TunnelVision');
+        return;
+    }
+
+    // Display results
+    const bookData = await loadWorldInfo(bookName);
+    const resultLines = [];
+    for (const r of parsed.results) {
+        const entry = bookData?.entries ? findEntryByUid(bookData.entries, r.uid) : null;
+        if (entry) {
+            resultLines.push(`**${entry.comment || 'Untitled'}** (UID ${r.uid}): ${(entry.content || '').substring(0, 200)}`);
+        }
+    }
+
+    if (resultLines.length > 0) {
+        toastr.success(`Found ${resultLines.length} matching entries.`, 'TunnelVision');
+        console.log(`[TunnelVision] /tv-search results for "${query}":\n${resultLines.join('\n')}`);
+    } else {
+        toastr.info('Search returned UIDs that could not be resolved.', 'TunnelVision');
+    }
+}
+
+async function handleRemember(_namedArgs, unnamedArg, { activeBooks }) {
+    const bookName = resolveBook(activeBooks);
+    if (!bookName) return;
+
+    const hint = String(unnamedArg || '').trim();
+    if (!hint) {
+        toastr.warning('Usage: /tv-remember <what to remember>', 'TunnelVision');
+        return;
+    }
+
+    const { book: lorebook, error } = resolveTargetBook(bookName, { checkWrite: true });
+    if (error) {
+        toastr.error(error, 'TunnelVision');
+        return;
+    }
+
+    const isSchemaRequest = /\b(design|schema|track(er|ing)?|template|format|struct(ure)?)\b/i.test(hint);
+    const messageCount = getContextMessages();
+    const recentChat = getRecentChat(messageCount);
+    const storyCtx = getStoryContext();
+    const contextBlock = [storyCtx, recentChat].filter(Boolean).join('\n\n');
+
+    toastr.info(isSchemaRequest ? 'Designing tracker schema...' : 'Creating memory entry...', 'TunnelVision');
+
+    const schemaInstructions = isSchemaRequest
+        ? `\nThe user wants a TRACKER — a structured schema for tracking state that changes over time.
+Design a well-structured format using headers, bullet points, and key:value pairs.
+Include placeholder values that demonstrate the format. Prefix the title with "[Tracker]".`
+        : '';
+
+    const prompt = `${contextBlock ? contextBlock + '\n\n' : ''}The user wants to remember: "${hint}"
+${schemaInstructions}
+Based on the conversation above, create a lorebook entry that captures this information.
+Write in third person, factual style. Include relevant names, places, and details from the conversation.
+
+Return JSON:
+{
+  "title": "<short descriptive title for the entry>",
+  "content": "<well-written third-person factual entry content>",
+  "keys": ["<keyword1>", "<keyword2>"]
+}`;
+
+    const response = await generateAnalytical({ prompt });
+    const parsed = parseJSON(response);
+
+    if (!parsed?.title || !parsed?.content) {
+        toastr.error('Failed to create entry — could not parse LLM response.', 'TunnelVision');
+        return;
+    }
+
+    try {
+        const result = await createEntry(lorebook, {
+            content: parsed.content,
+            comment: parsed.title,
+            keys: Array.isArray(parsed.keys) ? parsed.keys : [],
+        });
+        toastr.success(`Saved: "${result.comment}" (UID ${result.uid})`, 'TunnelVision');
+    } catch (e) {
+        toastr.error(`Failed to save: ${e.message}`, 'TunnelVision');
+    }
+}
+
+async function handleSummarize(_namedArgs, unnamedArg, { activeBooks }) {
+    const bookName = resolveBook(activeBooks);
+    if (!bookName) return;
+
+    const { book: lorebook, error } = resolveTargetBook(bookName, { checkWrite: true });
+    if (error) {
+        toastr.error(error, 'TunnelVision');
+        return;
+    }
+
+    const titleHint = String(unnamedArg || '').trim() || 'Recent events';
+    const messageCount = getContextMessages();
+    const recentChat = getRecentChat(messageCount);
+
+    if (!recentChat) {
+        toastr.warning('No chat messages to summarize.', 'TunnelVision');
+        return;
+    }
+
+    toastr.info('Creating summary...', 'TunnelVision');
+
+    const storyCtx = getStoryContext();
+    const prompt = `${storyCtx ? storyCtx + '\n\n' : ''}Summarize the following conversation for a creative writing lorebook.
+Write in third person, past tense, capturing key actions, decisions, emotional beats, and plot developments.
+
+Topic/title hint: "${titleHint}"
+
+RECENT CONVERSATION:
+${recentChat}
+
+Return JSON:
+{
+  "title": "[Summary] <concise descriptive title>",
+  "summary": "<thorough third-person past-tense summary>",
+  "significance": "minor|moderate|major|critical"
+}`;
+
+    const response = await generateAnalytical({ prompt });
+    const parsed = parseJSON(response);
+
+    if (!parsed?.title || !parsed?.summary) {
+        toastr.error('Failed to create summary — could not parse LLM response.', 'TunnelVision');
+        return;
+    }
+
+    try {
+        const sig = parsed.significance || 'moderate';
+        const content = `[Scene Summary — ${sig}]\n\n${parsed.summary.trim()}`;
+        const result = await createEntry(lorebook, {
+            content,
+            comment: parsed.title,
+            keys: [],
+        });
+        toastr.success(`Summary saved: "${result.comment}" (UID ${result.uid})`, 'TunnelVision');
+    } catch (e) {
+        toastr.error(`Failed to save summary: ${e.message}`, 'TunnelVision');
+    }
+}
+
+async function handleForget(_namedArgs, unnamedArg, { activeBooks }) {
+    const bookName = resolveBook(activeBooks);
+    if (!bookName) return;
+
+    const target = String(unnamedArg || '').trim();
+    if (!target) {
+        toastr.warning('Usage: /tv-forget <entry name or UID>', 'TunnelVision');
+        return;
+    }
+
+    // If the user gave a numeric UID, use it directly
+    const directUid = parseInt(target, 10);
+    if (!isNaN(directUid) && String(directUid) === target) {
+        toastr.info(`Forgetting entry UID ${directUid}...`, 'TunnelVision');
+        try {
+            const result = await forgetEntry(bookName, directUid);
+            toastr.success(`Forgotten: "${result.comment}" (${result.action})`, 'TunnelVision');
+        } catch (e) {
+            toastr.error(`Failed to forget: ${e.message}`, 'TunnelVision');
+        }
+        return;
+    }
+
+    // Otherwise, ask the LLM to identify the entry by name
+    const entryList = await buildEntryListing(bookName);
+    if (!entryList) {
+        toastr.warning(`No entries found in "${bookName}".`, 'TunnelVision');
+        return;
+    }
+
+    toastr.info('Identifying entry to forget...', 'TunnelVision');
+
+    const prompt = `The user wants to forget/remove this entry from their lorebook: "${target}"
+
+ENTRIES IN "${bookName}":
+${entryList}
+
+Which entry best matches their request? Return JSON: { "uid": <number>, "title": "<entry title>", "reason": "<why this matches>" }
+If no entry matches, return { "uid": null, "reason": "No matching entry found" }.`;
+
+    const response = await generateAnalytical({ prompt });
+    const parsed = parseJSON(response);
+
+    if (!parsed?.uid) {
+        toastr.warning(`Could not identify an entry matching "${target}".`, 'TunnelVision');
+        return;
+    }
+
+    try {
+        const result = await forgetEntry(bookName, parsed.uid);
+        toastr.success(`Forgotten: "${result.comment}" (UID ${parsed.uid}, ${result.action})`, 'TunnelVision');
+    } catch (e) {
+        toastr.error(`Failed to forget UID ${parsed.uid}: ${e.message}`, 'TunnelVision');
+    }
+}
+
+async function handleMerge(_namedArgs, unnamedArg, { activeBooks }) {
+    const bookName = resolveBook(activeBooks);
+    if (!bookName) return;
+
+    const hint = String(unnamedArg || '').trim();
+    const entryList = await buildEntryListing(bookName);
+    if (!entryList) {
+        toastr.warning(`No entries found in "${bookName}".`, 'TunnelVision');
+        return;
+    }
+
+    toastr.info('Identifying entries to merge...', 'TunnelVision');
+
+    const hintClause = hint
+        ? `The user specifically wants to merge entries related to: "${hint}"`
+        : 'Find the two most similar/overlapping entries that should be consolidated.';
+
+    const prompt = `${hintClause}
+
+ENTRIES IN "${bookName}":
+${entryList}
+
+Identify two entries that cover the same topic and should be merged into one.
+Pick the entry with the better content as "keep_uid" and the redundant one as "remove_uid".
+Write clean, consolidated merged content that combines the best of both.
+
+Return JSON:
+{
+  "keep_uid": <number>,
+  "remove_uid": <number>,
+  "merged_title": "<clean title for the merged entry>",
+  "merged_content": "<consolidated content combining both entries>",
+  "reason": "<why these should be merged>"
+}
+If no entries should be merged, return { "keep_uid": null, "reason": "No duplicate entries found" }.`;
+
+    const response = await generateAnalytical({ prompt });
+    const parsed = parseJSON(response);
+
+    if (!parsed?.keep_uid || !parsed?.remove_uid) {
+        toastr.info(parsed?.reason || 'No entries identified for merging.', 'TunnelVision');
+        return;
+    }
+
+    try {
+        const result = await mergeEntries(bookName, parsed.keep_uid, parsed.remove_uid, {
+            mergedContent: parsed.merged_content,
+            mergedTitle: parsed.merged_title,
+        });
+        toastr.success(
+            `Merged: "${result.removedComment}" (UID ${result.removedUid}) → "${result.comment}" (UID ${result.uid})`,
+            'TunnelVision',
+        );
+    } catch (e) {
+        toastr.error(`Merge failed: ${e.message}`, 'TunnelVision');
+    }
+}
+
+async function handleSplit(_namedArgs, unnamedArg, { activeBooks }) {
+    const bookName = resolveBook(activeBooks);
+    if (!bookName) return;
+
+    const hint = String(unnamedArg || '').trim();
+    const entryList = await buildEntryListing(bookName);
+    if (!entryList) {
+        toastr.warning(`No entries found in "${bookName}".`, 'TunnelVision');
+        return;
+    }
+
+    // If user gave a UID, target that entry specifically
+    const directUid = parseInt(hint, 10);
+    let targetEntry = null;
+    if (!isNaN(directUid) && String(directUid) === hint) {
+        const bookData = await loadWorldInfo(bookName);
+        targetEntry = bookData?.entries ? findEntryByUid(bookData.entries, directUid) : null;
+    }
+
+    toastr.info('Analyzing entry for split...', 'TunnelVision');
+
+    const targetClause = targetEntry
+        ? `Split this specific entry (UID ${directUid}, "${targetEntry.comment || ''}"):\n${targetEntry.content}`
+        : hint
+            ? `The user wants to split an entry related to: "${hint}"\n\nENTRIES IN "${bookName}":\n${entryList}`
+            : `Find the entry that covers too many topics and should be split.\n\nENTRIES IN "${bookName}":\n${entryList}`;
+
+    const prompt = `${targetClause}
+
+Identify one entry that covers multiple distinct topics and split it into two focused entries.
+
+Return JSON:
+{
+  "uid": <number>,
+  "keep_content": "<content that stays in the original entry>",
+  "keep_title": "<updated title for the original entry>",
+  "new_content": "<content for the new split-off entry>",
+  "new_title": "<title for the new entry>",
+  "reason": "<why this split improves organization>"
+}
+If no entry needs splitting, return { "uid": null, "reason": "No entries need splitting" }.`;
+
+    const response = await generateAnalytical({ prompt });
+    const parsed = parseJSON(response);
+
+    if (!parsed?.uid) {
+        toastr.info(parsed?.reason || 'No entries identified for splitting.', 'TunnelVision');
+        return;
+    }
+
+    try {
+        const result = await splitEntry(bookName, parsed.uid, {
+            keepContent: parsed.keep_content,
+            keepTitle: parsed.keep_title,
+            newContent: parsed.new_content,
+            newTitle: parsed.new_title,
+        });
+        toastr.success(
+            `Split: "${result.originalTitle}" → kept + new "${result.newTitle}" (UID ${result.newUid})`,
+            'TunnelVision',
+        );
+    } catch (e) {
+        toastr.error(`Split failed: ${e.message}`, 'TunnelVision');
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dedupe handler — batch-merge all duplicate clusters
+// ---------------------------------------------------------------------------
+
+const DEDUPE_SIMILARITY_THRESHOLD = 0.55;
+const DEDUPE_MAX_CLUSTERS_PER_BATCH = 8;
+
 /**
- * Ingest recent chat messages into the given lorebook without sending a generation.
- * @param {string} bookName - Active TunnelVision lorebook name.
- * @param {number} contextMessages - How many recent messages to ingest.
+ * Find duplicate clusters using trigram similarity on content+title.
+ * Returns groups of 2+ entries that are near-duplicates of each other.
  */
-async function handleIngest(bookName, contextMessages) {
+function findDuplicateClusters(entries, threshold) {
+    // Union-Find for clustering
+    const parent = new Map();
+    function find(uid) {
+        if (!parent.has(uid)) parent.set(uid, uid);
+        if (parent.get(uid) !== uid) parent.set(uid, find(parent.get(uid)));
+        return parent.get(uid);
+    }
+    function union(a, b) {
+        const ra = find(a), rb = find(b);
+        if (ra !== rb) parent.set(ra, rb);
+    }
+
+    // Compare all pairs
+    for (let i = 0; i < entries.length; i++) {
+        for (let j = i + 1; j < entries.length; j++) {
+            const textA = `${entries[i].title} ${entries[i].content}`.toLowerCase();
+            const textB = `${entries[j].title} ${entries[j].content}`.toLowerCase();
+            if (trigramSimilarity(textA, textB) >= threshold) {
+                union(entries[i].uid, entries[j].uid);
+            }
+        }
+    }
+
+    // Group by cluster root
+    const clusters = new Map();
+    for (const entry of entries) {
+        const root = find(entry.uid);
+        if (!clusters.has(root)) clusters.set(root, []);
+        clusters.get(root).push(entry);
+    }
+
+    // Only return clusters with 2+ entries
+    return [...clusters.values()].filter(c => c.length >= 2);
+}
+
+/**
+ * Find or create a "Deduped" node under root for parking merged-away entries.
+ */
+function getOrCreateDedupedNode(bookName) {
+    const tree = getTree(bookName);
+    if (!tree?.root) return null;
+
+    // Look for existing Deduped node
+    for (const child of (tree.root.children || [])) {
+        if (child.label === 'Deduped') return { node: child, tree };
+    }
+
+    // Create one — hidden from AI traversal
+    const node = createTreeNode('Deduped', 'Entries absorbed during deduplication. Safe to delete.');
+    node.hidden = true;
+    tree.root.children = tree.root.children || [];
+    tree.root.children.push(node);
+    saveTree(bookName, tree);
+    return { node, tree };
+}
+
+async function handleDedupe(_namedArgs, unnamedArg, { activeBooks }) {
+    const requested = String(unnamedArg || '').trim();
+    let bookName;
+
+    if (requested) {
+        bookName = activeBooks.find(b => b.toLowerCase() === requested.toLowerCase());
+        if (!bookName) {
+            toastr.warning(`Lorebook "${requested}" not found among active books.`, 'TunnelVision');
+            return;
+        }
+    } else {
+        bookName = resolveBook(activeBooks);
+    }
+    if (!bookName) return;
+
+    // Load all active entries
+    const bookData = await loadWorldInfo(bookName);
+    if (!bookData?.entries) {
+        toastr.warning(`No entries in "${bookName}".`, 'TunnelVision');
+        return;
+    }
+
+    const allEntries = [];
+    for (const entry of Object.values(bookData.entries)) {
+        if (entry.disable) continue;
+        allEntries.push({
+            uid: entry.uid,
+            title: (entry.comment || '').trim() || `Entry #${entry.uid}`,
+            content: (entry.content || '').trim(),
+        });
+    }
+
+    if (allEntries.length < 2) {
+        toastr.info('Not enough entries to deduplicate.', 'TunnelVision');
+        return;
+    }
+
+    toastr.info(`Scanning ${allEntries.length} entries for duplicates...`, 'TunnelVision');
+
+    const threshold = getSettings().vectorDedupThreshold || DEDUPE_SIMILARITY_THRESHOLD;
+    const clusters = findDuplicateClusters(allEntries, threshold);
+
+    if (clusters.length === 0) {
+        toastr.success('No duplicate clusters found — lorebook is clean.', 'TunnelVision');
+        return;
+    }
+
+    const totalDupes = clusters.reduce((sum, c) => sum + c.length, 0);
+    toastr.info(
+        `Found ${clusters.length} duplicate cluster(s) (${totalDupes} entries total). Merging...`,
+        'TunnelVision',
+    );
+
+    let mergedCount = 0;
+    let errorCount = 0;
+
+    // Process in batches to avoid overwhelming the LLM
+    for (let batchStart = 0; batchStart < clusters.length; batchStart += DEDUPE_MAX_CLUSTERS_PER_BATCH) {
+        const batch = clusters.slice(batchStart, batchStart + DEDUPE_MAX_CLUSTERS_PER_BATCH);
+
+        // Build prompt for this batch
+        const clusterDescriptions = batch.map((cluster, idx) => {
+            const entryLines = cluster.map(e => {
+                const preview = e.content.substring(0, 200).replace(/\n/g, ' ');
+                return `  - UID ${e.uid}: "${e.title}" — ${preview}`;
+            }).join('\n');
+            return `CLUSTER ${idx + 1} (${cluster.length} entries):\n${entryLines}`;
+        }).join('\n\n');
+
+        const prompt = `You are deduplicating a lorebook. For each cluster below, all entries cover the same topic.
+Pick the ONE best entry to keep (keep_uid) and write clean consolidated content that combines the best information from all entries in the cluster.
+
+${clusterDescriptions}
+
+Return JSON — an array with one object per cluster:
+[
+  {
+    "cluster": 1,
+    "keep_uid": <number>,
+    "remove_uids": [<numbers of all OTHER entries to absorb>],
+    "merged_title": "<clean consolidated title>",
+    "merged_content": "<consolidated content combining the best of all entries>"
+  }
+]`;
+
+        let parsed;
+        try {
+            const response = await generateAnalytical({ prompt });
+            parsed = parseJSON(response);
+        } catch (e) {
+            console.error('[TunnelVision] /tv-dedupe LLM batch failed:', e);
+            toastr.warning(`Batch ${batchStart + 1} LLM call failed: ${e.message}`, 'TunnelVision');
+            errorCount += batch.length;
+            continue;
+        }
+
+        if (!Array.isArray(parsed)) {
+            console.warn('[TunnelVision] /tv-dedupe: LLM did not return an array, skipping batch');
+            errorCount += batch.length;
+            continue;
+        }
+
+        // Execute merges for this batch
+        for (const instruction of parsed) {
+            if (!instruction?.keep_uid || !Array.isArray(instruction.remove_uids)) continue;
+
+            for (const removeUid of instruction.remove_uids) {
+                try {
+                    await mergeEntries(bookName, instruction.keep_uid, removeUid, {
+                        mergedContent: instruction.merged_content,
+                        mergedTitle: instruction.merged_title,
+                    });
+                    mergedCount++;
+
+                    // Move the disabled entry to Deduped node
+                    const dedupResult = getOrCreateDedupedNode(bookName);
+                    if (dedupResult) {
+                        const { node: dedupNode, tree } = dedupResult;
+                        dedupNode.entryUids = dedupNode.entryUids || [];
+                        dedupNode.entryUids.push(removeUid);
+                        saveTree(bookName, tree);
+                    }
+                } catch (e) {
+                    console.warn(`[TunnelVision] /tv-dedupe: merge UID ${removeUid} → ${instruction.keep_uid} failed:`, e.message);
+                    errorCount++;
+                }
+            }
+
+            // After merging all into the keeper, set the final merged content once
+            // (mergeEntries concatenates by default on each call, but we want the LLM's clean version)
+            if (instruction.merged_content && instruction.remove_uids.length > 0) {
+                try {
+                    await updateEntry(bookName, instruction.keep_uid, {
+                        content: instruction.merged_content,
+                        comment: instruction.merged_title,
+                    });
+                } catch { /* best effort — merge already succeeded */ }
+            }
+        }
+
+        if (batchStart + DEDUPE_MAX_CLUSTERS_PER_BATCH < clusters.length) {
+            toastr.info(
+                `Progress: ${mergedCount} merged so far, ${clusters.length - batchStart - DEDUPE_MAX_CLUSTERS_PER_BATCH} clusters remaining...`,
+                'TunnelVision',
+            );
+        }
+    }
+
+    if (mergedCount > 0) {
+        toastr.success(
+            `Deduplication complete: ${mergedCount} entries merged into their clusters. ` +
+            `${errorCount > 0 ? `${errorCount} error(s). ` : ''}` +
+            `Absorbed entries moved to "Deduped" node for review.`,
+            'TunnelVision',
+        );
+    } else {
+        toastr.warning(
+            `Deduplication finished but no merges succeeded (${errorCount} error(s)).`,
+            'TunnelVision',
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ingest handler (unchanged — already uses direct action)
+// ---------------------------------------------------------------------------
+
+async function handleIngestCommand(_namedArgs, unnamedArg, { activeBooks }) {
+    const requested = String(unnamedArg || '').trim();
+    let targetLorebook;
+
+    if (requested) {
+        targetLorebook = activeBooks.find(b => b.toLowerCase() === requested.toLowerCase()) || null;
+        if (!targetLorebook) {
+            toastr.warning(`Lorebook "${requested}" not found among active books.`, 'TunnelVision');
+            return;
+        }
+    } else {
+        targetLorebook = resolveBook(activeBooks);
+    }
+
+    if (!targetLorebook) return;
+
+    const contextMessages = getContextMessages();
+
     try {
         const context = getContext();
         const chat = context?.chat;
@@ -410,9 +903,9 @@ async function handleIngest(bookName, contextMessages) {
         const from = Math.max(0, chat.length - contextMessages);
         const to = chat.length - 1;
 
-        toastr.info(`Ingesting messages ${from}\u2013${to} into "${bookName}"\u2026`, 'TunnelVision');
+        toastr.info(`Ingesting messages ${from}\u2013${to} into "${targetLorebook}"\u2026`, 'TunnelVision');
 
-        const result = await ingestChatMessages(bookName, {
+        const result = await ingestChatMessages(targetLorebook, {
             from,
             to,
             progress: (msg) => toastr.info(msg, 'TunnelVision'),

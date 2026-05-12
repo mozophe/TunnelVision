@@ -21,12 +21,14 @@ import {
     findNodeById,
     getAllEntryUids,
     getSettings,
+    isNativeInjectionBook,
 } from './tree-store.js';
 import { getReadableBooks } from './tool-registry.js';
 import { hasEvaluableConditions, separateConditions, mapSelectiveLogic, describeSelectiveLogic, CONDITION_DESCRIPTIONS, CONDITION_LABELS, rollKeywordProbability, formatCondition } from './conditions.js';
 import { isSidecarConfigured, sidecarGenerate, getSidecarModelLabel } from './llm-sidecar.js';
 import { logSidecarRetrieval, logConditionalEvaluations, setSidecarActive } from './activity-feed.js';
 import { getKeywordTriggeredUids } from './index.js';
+import { applyBackgroundPromptAddendum, buildLanguageDirective } from './agent-utils.js';
 
 const TV_SIDECAR_RETRIEVAL_KEY = 'tunnelvision_sidecar_retrieval';
 
@@ -249,7 +251,7 @@ async function resolveNodeContent(nodeIds) {
     const seenEntries = new Set();
 
     for (const nodeId of nodeIds) {
-        for (const bookName of getReadableBooks()) {
+        for (const bookName of getReadableBooks().filter(b => !isNativeInjectionBook(b))) {
             const tree = getTree(bookName);
             if (!tree?.root) continue;
 
@@ -474,9 +476,10 @@ export async function runSidecarRetrieval() {
     try {
         // Ask sidecar LLM to pick relevant nodes AND evaluate conditionals
         const prompt = buildRetrievalPrompt(treeOverview, recentChat, conditionalSection);
+        const langDirective = buildLanguageDirective();
         const response = await sidecarGenerate({
             prompt,
-            systemPrompt: SIDECAR_SYSTEM_PROMPT,
+            systemPrompt: applyBackgroundPromptAddendum(SIDECAR_SYSTEM_PROMPT) + langDirective,
         });
 
         const { nodeIds, reasoning, conditionalEvaluations } = parseSidecarResponse(response);
@@ -532,7 +535,6 @@ export async function runSidecarRetrieval() {
             ? injectionText.substring(0, maxChars) + '\n[... content truncated]'
             : injectionText;
 
-        // IN_CHAT depth 0 = injected at the very bottom of the chat history (closest to the latest message)
         setExtensionPrompt(TV_SIDECAR_RETRIEVAL_KEY, capped, position, depth, false, role);
 
         // Resolve node labels for the feed

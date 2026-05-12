@@ -22,13 +22,16 @@ import { eventSource, event_types, extension_prompt_types, extension_prompt_role
 import { getContext } from '../../../st-context.js';
 import { ToolManager } from '../../../tool-calling.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { getSettings, isLorebookEnabled, setLorebookEnabled, getTree, removeEntryFromTree, saveTree } from './tree-store.js';
+import { getSettings, isLorebookEnabled, setLorebookEnabled, getTree, removeEntryFromTree, saveTree, isNativeInjectionBook } from './tree-store.js';
 import { preflightToolRuntimeState, registerTools, getActiveTunnelVisionBooks } from './tool-registry.js';
+import { resetSearchLoopTracker, resetSelectiveRetrievalTracker } from './tools/search.js';
 import { buildNotebookPrompt, resetNotebookWriteGuard } from './tools/notebook.js';
+import { flushPendingSummaryHide } from './tools/summarize.js';
 import { bindUIEvents, refreshUI } from './ui-controller.js';
 import { initActivityFeed } from './activity-feed.js';
 import { initCommands } from './commands.js';
 import { initAutoSummary } from './auto-summary.js';
+import { initPostTurnProcessor } from './post-turn-processor.js';
 import { runSidecarRetrieval } from './sidecar-retrieval.js';
 import { runSidecarWriter, revertMessageSnapshots, revertInvalidSnapshots } from './sidecar-writer.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
@@ -46,6 +49,7 @@ let _generationInProgress = false;
 // ST's Generate() increments depth internally but doesn't expose it to extensions,
 // so we mirror it here to know when we're on the final pass.
 let _toolRecursionDepth = 0;
+let _skipPreCommandGeneration = false;
 
 async function init() {
     // Ensure settings exist
@@ -72,6 +76,9 @@ async function init() {
 
     // Wire up auto-summary interval tracking
     initAutoSummary();
+
+    // Wire up post-turn processor (tracker updates, fact extraction, scene archiving)
+    initPostTurnProcessor();
 
     // Inject condition editor into ST's base lorebook editor
     initWIConditionInjector();
@@ -111,6 +118,9 @@ async function init() {
     if (event_types.GENERATION_STARTED) {
         eventSource.on(event_types.GENERATION_STARTED, onGenerationStarted);
     }
+    if (event_types.GENERATION_AFTER_COMMANDS) {
+        eventSource.on(event_types.GENERATION_AFTER_COMMANDS, onGenerationAfterCommands);
+    }
 
     // Strip tool definitions on the final recursion pass so the model writes narrative
     // instead of making tool calls that ST will ignore (depth >= RECURSE_LIMIT).
@@ -125,6 +135,7 @@ async function init() {
             console.debug('[TunnelVision] GENERATION_ENDED — clearing generation guards');
             _generationInProgress = false;
             _toolRecursionDepth = 0;
+            _skipPreCommandGeneration = false;
             _keywordTriggeredUids.clear();
             window.TunnelVision_isRecursiveToolPass = false;
         });
@@ -134,6 +145,7 @@ async function init() {
                 console.debug('[TunnelVision] GENERATION_STOPPED — clearing generation guards');
                 _generationInProgress = false;
                 _toolRecursionDepth = 0;
+                _skipPreCommandGeneration = false;
                 window.TunnelVision_isRecursiveToolPass = false;
             });
         }
@@ -204,17 +216,36 @@ function autoDetectLorebooks() {
     if (!world_names || world_names.length === 0) return;
 
     const context = getContext();
-    const charName = context?.name2 || '';
-    // Replace {{char}} macro
-    const resolved = pattern.replace(/\{\{char\}\}/gi, charName);
-    if (!resolved.trim()) return;
+
+    // In group chats, expand {{char}} against ALL group members' names
+    // instead of just name2 (which rotates per character)
+    const charNames = [];
+    if (context.groupId) {
+        const group = context.groups?.find(g => g.id === context.groupId);
+        if (group?.members) {
+            const disabledMembers = new Set(group.disabled_members || []);
+            for (const avatar of group.members) {
+                if (disabledMembers.has(avatar)) continue;
+                const char = context.characters?.find(c => c.avatar === avatar);
+                if (char?.name) charNames.push(char.name);
+            }
+        }
+    }
+    if (charNames.length === 0) {
+        charNames.push(context?.name2 || '');
+    }
 
     let autoEnabled = 0;
-    for (const bookName of world_names) {
-        if (bookName.includes(resolved) && !isLorebookEnabled(bookName)) {
-            setLorebookEnabled(bookName, true);
-            autoEnabled++;
-            console.log(`[TunnelVision] Auto-detected lorebook: "${bookName}" (pattern: "${resolved}")`);
+    for (const charName of charNames) {
+        const resolved = pattern.replace(/\{\{char\}\}/gi, charName);
+        if (!resolved.trim()) continue;
+
+        for (const bookName of world_names) {
+            if (bookName.includes(resolved) && !isLorebookEnabled(bookName)) {
+                setLorebookEnabled(bookName, true);
+                autoEnabled++;
+                console.log(`[TunnelVision] Auto-detected lorebook: "${bookName}" (pattern: "${resolved}")`);
+            }
         }
     }
     if (autoEnabled > 0) {
@@ -589,6 +620,11 @@ function onWorldInfoEntriesLoaded(data) {
                     passed++;
                     continue;
                 }
+                // Let native-injection books through — ST handles their positions/outlets
+                if (isNativeInjectionBook(arr[i].world)) {
+                    passed++;
+                    continue;
+                }
                 arr.splice(i, 1);
                 removed++;
             }
@@ -802,30 +838,15 @@ function convertToolChoiceToAnthropicFormat(toolChoice) {
  * Claude sees tools, makes tool calls + "..." text, the calls get ignored,
  * and "..." becomes the visible output. By setting tool_choice to "none" on
  * the final pass, we force the model to write narrative instead.
+ *
+ * NOTE: We intentionally do NOT convert tools/tool_choice to Anthropic format
+ * here. ST's server-side backend (chat-completions.js) already handles
+ * OpenAI→Anthropic conversion for both tool definitions and tool_choice.
+ * Doing it client-side would cause double-wrapping (e.g. tool_choice becomes
+ * { type: { type: "auto" } }) and strip tools from ST's server-side filter.
  */
 function onChatCompletionSettingsReady(data) {
     if (!_generationInProgress) return;
-
-    // ── Anthropic format conversion ──────────────────────────────────
-    // ST's ToolManager registers tools in OpenAI function-calling format
-    // ({ type: "function", function: { ... } }). When the active backend
-    // is Anthropic, convert them to the Messages API format so the request
-    // doesn't get rejected with an "invalid input tag" error.
-    if (data.tools?.length && isAnthropicApi(data)) {
-        const hasOpenAIWrapped = data.tools.some(t => t?.type === 'function' && t.function);
-        if (hasOpenAIWrapped) {
-            data.tools = data.tools.map(convertToolToAnthropicFormat);
-            if (data.tool_choice !== undefined) {
-                const converted = convertToolChoiceToAnthropicFormat(data.tool_choice);
-                if (converted === undefined) {
-                    delete data.tool_choice;
-                } else {
-                    data.tool_choice = converted;
-                }
-            }
-            console.log(`[TunnelVision] Converted ${data.tools.length} tool(s) from OpenAI to Anthropic format`);
-        }
-    }
 
     // ── Final-pass tool stripping ────────────────────────────────────
     const recurseLimit = ToolManager.RECURSE_LIMIT ?? 5;
@@ -840,6 +861,21 @@ function onChatCompletionSettingsReady(data) {
     }
 }
 
+function isPendingSlashCommandGeneration(type) {
+    if (type === 'quiet' || type === 'regenerate' || type === 'swipe') return false;
+    try {
+        const text = String($('#send_textarea').val() || '').trimStart();
+        return text.startsWith('/');
+    } catch {
+        return false;
+    }
+}
+
+function onGenerationAfterCommands(_type, _opts, dryRun) {
+    if (dryRun) return;
+    _skipPreCommandGeneration = false;
+}
+
 /**
  * Inject or clear the mandatory tool call system prompt before each generation.
  * Runs before ST assembles the next request, so it can validate TV tool state first.
@@ -851,6 +887,17 @@ async function onGenerationStarted(type, opts, dryRun) {
     // GENERATION_ENDED to clear it, so it would stay true forever and block tool re-registration.
     if (dryRun) return;
 
+    if (isPendingSlashCommandGeneration(type)) {
+        _skipPreCommandGeneration = true;
+        _generationInProgress = false;
+        _toolRecursionDepth = 0;
+        window.TunnelVision_isRecursiveToolPass = false;
+        setExtensionPrompt(TV_PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        console.debug('[TunnelVision] Pending slash command detected — skipping pre-command TV sidecar/tool work');
+        return;
+    }
+
+    _skipPreCommandGeneration = false;
     _generationInProgress = true;
 
     // Detect recursive tool-call passes FIRST, before any other work.
@@ -866,6 +913,8 @@ async function onGenerationStarted(type, opts, dryRun) {
         _toolRecursionDepth++;
     } else {
         _toolRecursionDepth = 0;
+        resetSearchLoopTracker();
+        resetSelectiveRetrievalTracker();
     }
 
     // Expose recursive state globally so presets, macros, and other extensions can
@@ -929,6 +978,7 @@ async function onGenerationStarted(type, opts, dryRun) {
     if (
         settings.globalEnabled !== false
         && settings.mandatoryTools
+        && ToolManager.canPerformToolCalls(type)
         && runtimeState?.activeBooks?.length > 0
         && runtimeState.expectedToolNames.length > 0
         && runtimeState.eligibleToolNames.length > 0
@@ -946,6 +996,12 @@ async function onGenerationStarted(type, opts, dryRun) {
             && runtimeState.eligibleToolNames.length === 0
         ) {
             console.warn('[TunnelVision] Mandatory tools enabled, but no eligible TunnelVision tools are available for this generation.');
+        } else if (
+            settings.globalEnabled !== false
+            && settings.mandatoryTools
+            && !ToolManager.canPerformToolCalls(type)
+        ) {
+            console.warn(`[TunnelVision] Mandatory tools enabled, but ST cannot perform tool calls for generation type "${type}".`);
         }
     }
 
@@ -968,12 +1024,23 @@ async function onGenerationStarted(type, opts, dryRun) {
  * Post-generation handler: run sidecar writer if enabled.
  * Fires after the chat model's response is received (MESSAGE_RECEIVED).
  */
+// Debounce timer for sidecar writer in group chats — prevents firing
+// once per group member by waiting for the last MESSAGE_RECEIVED.
+let _sidecarWriterDebounceTimer = null;
+
 async function onMessageReceived(messageId, type) {
     console.debug(`[TunnelVision] MESSAGE_RECEIVED: messageId=${messageId} type="${type}"`);
     // Clear generation guards BEFORE the sidecar writer runs, so that lorebook
     // writes triggered by the writer do not get blocked by the generation guard.
     _generationInProgress = false;
+    _skipPreCommandGeneration = false;
     window.TunnelVision_isRecursiveToolPass = false;
+
+    try {
+        await flushPendingSummaryHide();
+    } catch (err) {
+        console.error('[TunnelVision] Failed to flush pending summary hide:', err);
+    }
 
     // Never run sidecar writer on swipes, continues, first messages, or non-generation events.
     // Only run on normal 'normal' generation completions.
@@ -982,6 +1049,23 @@ async function onMessageReceived(messageId, type) {
 
     const settings = getSettings();
     if (!settings.sidecarPostGenWriter || settings.globalEnabled === false) return;
+
+    // In group chats, debounce: wait 800ms after the last MESSAGE_RECEIVED
+    // before firing the sidecar writer, so we only run once after the
+    // final group member's message instead of N times.
+    const context = getContext();
+    if (context.groupId) {
+        if (_sidecarWriterDebounceTimer) clearTimeout(_sidecarWriterDebounceTimer);
+        _sidecarWriterDebounceTimer = setTimeout(async () => {
+            _sidecarWriterDebounceTimer = null;
+            try {
+                await runSidecarWriter();
+            } catch (err) {
+                console.error('[TunnelVision] Sidecar post-gen writer error (group):', err);
+            }
+        }, 800);
+        return;
+    }
 
     try {
         await runSidecarWriter(messageId);

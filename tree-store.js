@@ -307,6 +307,7 @@ export const SETTING_DEFAULTS = {
     passthroughConstant: true,
     allowKeywordTriggers: false,
     autoDetectPattern: '',
+    backgroundPromptAddendum: '',
     confirmTools: {},
     toolPromptOverrides: {},
     // Sidecar auto-retrieval (pre-gen)
@@ -319,8 +320,22 @@ export const SETTING_DEFAULTS = {
     sidecarPostGenWriter: false,
     sidecarWriterContextMessages: 15,
     sidecarWriterMaxOps: 5,
+    // Post-turn processor (tracker updates, fact extraction, scene archiving)
+    postTurnEnabled: false,
+    postTurnCooldown: 1,
+    postTurnUpdateTrackers: true,
+    postTurnExtractFacts: true,
+    postTurnSceneArchive: true,
     // Per-lorebook permissions: { bookName: 'read_write' | 'read_only' | 'write_only' }
     bookPermissions: {},
+    // Per-lorebook injection mode: { bookName: 'sidecar' | 'native' }
+    // 'sidecar' (default): TV suppresses entries and injects via sidecar/smart-context
+    // 'native': TV does NOT suppress entries — ST handles injection at their configured positions/outlets.
+    //           TV tools can still read/write entries, but injection is left to ST's WI system.
+    bookInjectionModes: {},
+    // Output language: when set, all TV-generated content (entries, summaries, etc.)
+    // will be written in this language. Empty string = auto (match narrator/conversation).
+    targetLanguage: '',
     // Compact tool prompts: register one guide tool + one-liner descriptions to save tokens
     compactToolPrompts: true,
 };
@@ -605,8 +620,53 @@ export function canWriteBook(bookName) {
     return perm === 'read_write' || perm === 'write_only';
 }
 
+// ─── Per-Lorebook Injection Mode ─────────────────────────────────
+
+/**
+ * Get the injection mode for a lorebook.
+ * @param {string} bookName
+ * @returns {'sidecar'|'native'}
+ */
+export function getBookInjectionMode(bookName) {
+    ensureSettings();
+    return extension_settings[EXTENSION_NAME].bookInjectionModes[bookName] || 'sidecar';
+}
+
+/**
+ * Set the injection mode for a lorebook.
+ * @param {string} bookName
+ * @param {'sidecar'|'native'} mode
+ */
+export function setBookInjectionMode(bookName, mode) {
+    ensureSettings();
+    if (mode === 'sidecar') {
+        // Default — remove from map to keep it clean
+        delete extension_settings[EXTENSION_NAME].bookInjectionModes[bookName];
+    } else {
+        extension_settings[EXTENSION_NAME].bookInjectionModes[bookName] = mode;
+    }
+    saveSettingsDebounced();
+}
+
+/**
+ * Check if a lorebook uses native ST injection (outlets/positions preserved).
+ * When true, TV will NOT suppress entries from this book and will NOT inject them via sidecar.
+ * TV tools (Search, Remember, Update) still work normally.
+ * @param {string} bookName
+ * @returns {boolean}
+ */
+export function isNativeInjectionBook(bookName) {
+    return getBookInjectionMode(bookName) === 'native';
+}
+
 export function isTrackerTitle(title) {
     return TRACKER_TITLE_PREFIX.test(String(title || '').trim());
+}
+
+const SUMMARY_TITLE_PREFIX = /^\[(?:scene\s+)?summary[^\]]*\]/i;
+
+export function isSummaryTitle(title) {
+    return SUMMARY_TITLE_PREFIX.test(String(title || '').trim());
 }
 
 export function getTrackerUids(bookName) {

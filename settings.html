@@ -88,6 +88,16 @@
                         <div class="tv-help-text">Controls what the AI can do with this lorebook. Read-only blocks Remember/Update/Forget. Write-only hides it from Search results.</div>
                     </div>
 
+                    <!-- Per-Lorebook Injection Mode -->
+                    <div class="tv-setting-row">
+                        <label class="tv-label" for="tv_book_injection_mode">Injection Mode</label>
+                        <select id="tv_book_injection_mode" class="tv-select">
+                            <option value="sidecar">Sidecar (default) — TV handles injection</option>
+                            <option value="native">Native — ST handles injection (preserves outlets &amp; positions)</option>
+                        </select>
+                        <div class="tv-help-text">Controls how entries from this lorebook reach the prompt. <strong>Sidecar</strong>: TV suppresses normal WI triggers and injects entries via smart-context/sidecar retrieval. <strong>Native</strong>: entries keep their configured positions, outlets, and depth — ST's WI system handles injection. TV tools (Search, Remember, Update) still work in both modes.</div>
+                    </div>
+
                     <!-- Tree Building Section -->
                     <div class="tv-card">
                         <div class="tv-card-header">
@@ -219,6 +229,42 @@
                                 <br>Example: <code>TV - {{char}}</code> would auto-enable "TV - Sable" when chatting with Sable.
                             </div>
                             <input type="text" id="tv_auto_detect_pattern" class="text_pole" placeholder="e.g. TV - {{char}}" />
+                        </div>
+
+                        <!-- ═══ Output Language ═══ -->
+                        <div class="tv-adv-section">
+                            <div class="tv-adv-section-title">Output Language</div>
+                            <div class="tv-help-text" style="margin-bottom: 8px;">
+                                Force all TV-generated content (entries, summaries, tracker updates) to be written in this language. Leave empty to auto-match the conversation language.
+                            </div>
+                            <input type="text" id="tv_target_language" class="text_pole" placeholder="Auto (match conversation)" list="tv-lang-presets" />
+                            <datalist id="tv-lang-presets">
+                                <option value="English"></option>
+                                <option value="Japanese"></option>
+                                <option value="Korean"></option>
+                                <option value="Chinese"></option>
+                                <option value="Spanish"></option>
+                                <option value="Portuguese"></option>
+                                <option value="French"></option>
+                                <option value="German"></option>
+                                <option value="Russian"></option>
+                                <option value="Italian"></option>
+                                <option value="Thai"></option>
+                                <option value="Vietnamese"></option>
+                                <option value="Indonesian"></option>
+                                <option value="Arabic"></option>
+                                <option value="Turkish"></option>
+                                <option value="Polish"></option>
+                                <option value="Ukrainian"></option>
+                            </datalist>
+                        </div>
+
+                        <div class="tv-adv-section">
+                            <div class="tv-adv-section-title">Background LLM Instructions</div>
+                            <div class="tv-help-text" style="margin-bottom: 8px;">
+                                Extra system instructions for TunnelVision's background LLM calls: tree building, chat ingest, sidecar retrieval, and post-generation writing. This does not change tool descriptions in the main chat request.
+                            </div>
+                            <textarea id="tv_background_prompt_addendum" class="tv-textarea" rows="4" placeholder="Optional provider/model instructions for background TunnelVision calls."></textarea>
                         </div>
 
                         <!-- ═══ Search Mode ═══ -->

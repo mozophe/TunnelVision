@@ -24,7 +24,7 @@ import {
     getAllEntryUids,
     getSettings,
 } from './tree-store.js';
-import { getReadableBooks, checkToolConfirmation, REMEMBER_NAME, UPDATE_NAME, FORGET_NAME, SUMMARIZE_NAME, REORGANIZE_NAME, MERGESPLIT_NAME } from './tool-registry.js';
+import { getReadableBooks, getWritableBooks, getBookListWithDescriptions, checkToolConfirmation, REMEMBER_NAME, UPDATE_NAME, FORGET_NAME, SUMMARIZE_NAME, REORGANIZE_NAME, MERGESPLIT_NAME } from './tool-registry.js';
 import { isSidecarConfigured, sidecarGenerate, getSidecarModelLabel } from './llm-sidecar.js';
 import { getDefinition as getRememberDef } from './tools/remember.js';
 import { getDefinition as getUpdateDef } from './tools/update.js';
@@ -34,6 +34,7 @@ import { getDefinition as getReorganizeDef } from './tools/reorganize.js';
 import { getDefinition as getMergeSplitDef } from './tools/merge-split.js';
 import { logSidecarWrite } from './activity-feed.js';
 import { saveSettingsDebounced } from '../../../../script.js';
+import { applyBackgroundPromptAddendum, buildLanguageDirective } from './agent-utils.js';
 
 // ─── Turn Snapshots (for undos) ──────────────────────────────────
 
@@ -397,6 +398,7 @@ const WRITER_SYSTEM_PROMPT = `You are a lorebook maintenance assistant. After ea
 
 Rules:
 - Return a JSON object with fields: "reasoning", "remember", "update", "merge", "summarize", "forget", "reorganize", "split"
+- Write operations may target ONLY books listed under WRITABLE LOREBOOKS. Other books in CURRENT LOREBOOK STATE are read-only reference material
 - "reasoning": A brief explanation of why these operations are needed
 - "remember" entries are NEW facts/events not already in the lorebook
 - "update" entries modify EXISTING entries (you must reference the UID)
@@ -408,6 +410,7 @@ Rules:
 - Only create entries for significant, persistent information — not ephemeral dialogue
 - You are seeing conversation HISTORY only (the AI's latest response is excluded). Record facts the USER has established or confirmed, not speculative/fictional content
 - Focus on: character development, relationship changes, plot events, world-building facts, status changes
+- For "remember", choose the most specific matching tree node_id from CURRENT LOREBOOK STATE. If no branch fits, omit node_id and it will be filed at Root
 - If nothing significant happened, return: {"reasoning": "No significant events to record", "remember": [], "update": [], "merge": [], "summarize": [], "forget": [], "reorganize": [], "split": []}
 
 CRITICAL — Deduplication:
@@ -441,7 +444,7 @@ Response format:
 {
   "reasoning": "A brief explanation of why these operations are needed",
   "remember": [
-    {"lorebook": "BookName", "title": "Entry Title", "content": "The fact to remember...", "keys": ["keyword1", "keyword2"], "target_node_id": "tv_xxx_yyy"}
+    {"lorebook": "BookName", "title": "Entry Title", "content": "The fact to remember...", "keys": ["keyword1", "keyword2"], "node_id": "tv_xxx_yyy"}
   ],
   "update": [
     {"lorebook": "BookName", "uid": 123, "content": "Updated content...", "title": "Optional new title"}
@@ -473,8 +476,12 @@ Return ONLY the JSON object, no explanation.`;
  * @returns {string}
  */
 function buildWriterPrompt(treeOverview, recentChat, recentOps = '') {
+    const writableBooks = getBookListWithDescriptions({ writableOnly: true });
     return `CURRENT LOREBOOK STATE:
 ${treeOverview}${recentOps}
+
+WRITABLE LOREBOOKS:
+${writableBooks}
 
 CONVERSATION (including latest response):
 ${recentChat}
@@ -491,6 +498,7 @@ Based on the latest conversation turn, what lorebook operations (if any) should 
  * @property {string} [title]
  * @property {string} [content]
  * @property {string[]} [keys]
+ * @property {string} [node_id]
  * @property {number} [uid]
  * @property {number} [keep_uid]
  * @property {number} [remove_uid]
@@ -533,7 +541,7 @@ function parseWriteOps(response) {
                     title: String(r.title).substring(0, 200),
                     content: String(r.content).substring(0, 2000),
                     keys: Array.isArray(r.keys) ? r.keys.map(String).slice(0, 10) : [],
-                    target_node_id: r.target_node_id ? String(r.target_node_id) : undefined,
+                    node_id: r.node_id ? String(r.node_id) : undefined,
                 });
             }
         }
@@ -709,7 +717,7 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
                     title: op.title,
                     content: op.content,
                     keys: op.keys,
-                    node_id: op.target_node_id,
+                    node_id: op.node_id,
                     tv_tracker,
                 });
             } else if (op.type === 'update') {
@@ -846,6 +854,10 @@ export async function runSidecarWriter(messageId = null) {
 
     const activeBooks = getReadableBooks();
     if (activeBooks.length === 0) return;
+    if (getWritableBooks().length === 0) {
+        console.debug('[TunnelVision] Sidecar post-gen writer: no writable lorebooks');
+        return;
+    }
 
     // Build tree overview (includes entry titles for update reference)
     const treeOverview = await buildWriterTreeOverview();
@@ -867,9 +879,10 @@ export async function runSidecarWriter(messageId = null) {
     try {
         // Ask sidecar what to write
         const prompt = buildWriterPrompt(treeOverview, recentChat, recentOps);
+        const langDirective = buildLanguageDirective();
         const response = await sidecarGenerate({
             prompt,
-            systemPrompt: WRITER_SYSTEM_PROMPT,
+            systemPrompt: applyBackgroundPromptAddendum(WRITER_SYSTEM_PROMPT) + langDirective,
         });
 
         const _rawModel = getSidecarModelLabel() || 'unknown';

@@ -33,6 +33,8 @@ import {
     listConnectionProfiles,
     getBookPermission,
     setBookPermission,
+    getBookInjectionMode,
+    setBookInjectionMode,
     SETTING_DEFAULTS,
 } from './tree-store.js';
 import { buildTreeFromMetadata, buildTreeWithLLM, generateSummariesForTree, ingestChatMessages } from './tree-builder.js';
@@ -108,6 +110,19 @@ export function bindUIEvents() {
     $('#tv_auto_detect_pattern').on('input', function () {
         const settings = getSettings();
         settings.autoDetectPattern = $(this).val();
+        saveSettingsDebounced();
+    });
+
+    // Output language
+    $('#tv_target_language').on('input', function () {
+        const settings = getSettings();
+        settings.targetLanguage = $(this).val();
+        saveSettingsDebounced();
+    });
+
+    $('#tv_background_prompt_addendum').on('input', function () {
+        const settings = getSettings();
+        settings.backgroundPromptAddendum = $(this).val();
         saveSettingsDebounced();
     });
 
@@ -202,6 +217,7 @@ export function bindUIEvents() {
 
     // Per-lorebook permissions
     $('#tv_book_permission').on('change', onBookPermissionChange);
+    $('#tv_book_injection_mode').on('change', onBookInjectionModeChange);
 
     // Backup & Restore collapsible header
     $('#tv_backup_header').on('click', function () {
@@ -260,6 +276,12 @@ export function refreshUI() {
 
     // Sync auto-detect pattern
     $('#tv_auto_detect_pattern').val(settings.autoDetectPattern || '');
+
+    // Sync output language
+    $('#tv_target_language').val(settings.targetLanguage || '');
+
+    // Sync background LLM prompt addendum
+    $('#tv_background_prompt_addendum').val(settings.backgroundPromptAddendum || '');
 
     // Sync selective retrieval
     $('#tv_selective_retrieval').prop('checked', settings.selectiveRetrieval === true);
@@ -440,6 +462,7 @@ async function loadLorebookUI(bookName) {
     $('#tv_lorebook_enabled').prop('checked', isLorebookEnabled(bookName));
     $('#tv_book_description').val(getBookDescription(bookName) || '');
     $('#tv_book_permission').val(getBookPermission(bookName));
+    $('#tv_book_injection_mode').val(getBookInjectionMode(bookName));
     const tree = getTree(bookName);
     updateTreeStatus(bookName, tree);
     await renderTreeEditor(bookName, tree);
@@ -996,6 +1019,12 @@ function onSidecarWriterMaxOpsChange() {
 function onBookPermissionChange() {
     if (!currentLorebook) return;
     setBookPermission(currentLorebook, $(this).val() || 'read_write');
+    registerTools();
+}
+
+function onBookInjectionModeChange() {
+    if (!currentLorebook) return;
+    setBookInjectionMode(currentLorebook, $(this).val() || 'sidecar');
     registerTools();
 }
 
