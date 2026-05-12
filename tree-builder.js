@@ -316,7 +316,7 @@ async function _buildTreeWithLLM(lorebookName, options = {}) {
     progress(`Categorizing chunk 1/${chunks.length}`, 0);
     detail_(`${activeEntries.length} entries across ${chunks.length} chunk(s)`);
     const allEntryManifest = chunks.length > 1
-        ? activeEntries.map(e => formatEntryForLLM(e, 'names')).join('\n  - ')
+        ? activeEntries.map(e => formatEntryForLLM(e, 'names', { includeUid: false })).join('\n  - ')
         : null;
     const firstPrompt = buildCategorizationPrompt(lorebookName, chunks[0], activeEntries.length, allEntryManifest);
     const firstResponse = await generateRaw({
@@ -366,6 +366,32 @@ async function _buildTreeWithLLM(lorebookName, options = {}) {
     const assigned = new Set(getAllEntryUids(tree.root));
     for (const uid of allUids) {
         if (!assigned.has(uid)) addEntryToNode(tree.root, uid);
+    }
+
+    // Re-categorize any entries that couldn't be placed by the main chunking pass
+    if (tree.root.entryUids.length > 0) {
+        progress('Re-categorizing uncategorized entries…', 62);
+        const rootUids = [...tree.root.entryUids];
+        const rootUidSet = new Set(rootUids);
+        const rootEntries = activeEntries.filter(e => rootUidSet.has(e.uid));
+        const existingCategories = extractCategoryLabels(tree.root);
+        if (existingCategories.length > 0) {
+            console.log(`[TunnelVision] Re-categorizing ${rootEntries.length} uncategorized entries against ${existingCategories.length} categories…`);
+            const retryPrompt = buildContinuationPrompt(lorebookName, rootEntries, existingCategories, activeEntries.length);
+            const retryResponse = await generateRaw({
+                prompt: retryPrompt,
+                systemPrompt: applyBackgroundPromptAddendum('You are a categorization assistant. Respond ONLY with valid JSON, no commentary.'),
+            });
+            if (retryResponse) {
+                tree.root.entryUids = []; // clear so mergeLLMResponse can place them
+                mergeLLMResponse(tree, retryResponse, allUids);
+                const reassigned = new Set(getAllEntryUids(tree.root));
+                for (const uid of rootUids) {
+                    if (!reassigned.has(uid)) addEntryToNode(tree.root, uid);
+                }
+                console.log(`[TunnelVision] Re-categorization: placed ${rootUids.length - tree.root.entryUids.length}/${rootUids.length} previously uncategorized entries.`);
+            }
+        }
     }
 
     // Save intermediate tree so chunking work isn't lost if subdivision/summaries abort
@@ -900,7 +926,7 @@ async function parseLLMTreeResponse(lorebookName, response, entryUids) {
                     }
                 }
                 if (Array.isArray(cat.children) && cat.children.length > 0) buildNodes(cat.children, node);
-                parent.children.push(node);
+                if (node.entryUids.length > 0 || node.children.length > 0) parent.children.push(node);
             }
         }
 
