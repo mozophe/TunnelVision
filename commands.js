@@ -663,13 +663,20 @@ function findDuplicateClusters(entries, threshold) {
         if (ra !== rb) parent.set(ra, rb);
     }
 
-    // Mirrors diagnostics' titlesAreSimilar: exact match or containment with length ratio > 0.6
     function titlesMatch(a, b) {
-        const na = a.toLowerCase().trim();
-        const nb = b.toLowerCase().trim();
+        const na = a.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        const nb = b.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
         if (na === nb) return true;
         if (na.length > 3 && nb.length > 3 && (na.includes(nb) || nb.includes(na))) {
-            return Math.min(na.length, nb.length) / Math.max(na.length, nb.length) > 0.6;
+            return Math.min(na.length, nb.length) / Math.max(na.length, nb.length) > 0.5;
+        }
+        const wordsA = na.split(' ').filter(w => w.length > 2);
+        const wordsB = nb.split(' ').filter(w => w.length > 2);
+        const [shorter, longer] = wordsA.length <= wordsB.length
+            ? [wordsA, new Set(wordsB)] : [wordsB, new Set(wordsA)];
+        if (shorter.length >= 2) {
+            const overlap = shorter.filter(w => longer.has(w)).length;
+            return overlap / shorter.length >= 0.8;
         }
         return false;
     }

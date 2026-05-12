@@ -384,6 +384,23 @@ export function getSettings() {
     return extension_settings[EXTENSION_NAME];
 }
 
+function deduplicateUidsAcrossTree(node) {
+    let mutated = false;
+    for (const child of (node.children || [])) {
+        if (deduplicateUidsAcrossTree(child)) mutated = true;
+    }
+    if (node.children && node.children.length > 0) {
+        const descendantUids = new Set();
+        for (const child of node.children) {
+            for (const uid of getAllEntryUids(child)) descendantUids.add(uid);
+        }
+        const before = node.entryUids.length;
+        node.entryUids = node.entryUids.filter(uid => !descendantUids.has(uid));
+        if (node.entryUids.length !== before) mutated = true;
+    }
+    return mutated;
+}
+
 function normalizeTree(tree, lorebookName) {
     if (!tree || typeof tree !== 'object') return false;
 
@@ -409,6 +426,10 @@ function normalizeTree(tree, lorebookName) {
     }
 
     if (normalizeTreeNode(tree.root)) {
+        mutated = true;
+    }
+
+    if (deduplicateUidsAcrossTree(tree.root)) {
         mutated = true;
     }
 

@@ -432,6 +432,9 @@ function extractCategoryLabels(root) {
         labels.push(child.label);
         for (const sub of (child.children || [])) {
             labels.push(`${child.label} > ${sub.label}`);
+            for (const grand of (sub.children || [])) {
+                labels.push(`${child.label} > ${sub.label} > ${grand.label}`);
+            }
         }
     }
     return labels;
