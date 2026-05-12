@@ -745,16 +745,15 @@ export const FACT_EXTRACTION_PROMPT = `You are a memory curator for an ongoing r
 
 For each fact, provide:
 - title: A short, descriptive label (e.g. "Elena's fear of fire", "Tavern location")
-- content: The factual information, written in third person
-- keys: 3-5 searchable keywords
+- content: The factual information in third person. If the subject already appears in the "Already Known Facts" list below, write ONLY the new specific detail — do NOT restate who they are or repeat their general description.
+- keys: 3-8 searchable keywords — include character names, locations, objects, themes, and temporal markers
 - significance: "low" | "medium" | "high"
 
 Only extract facts that would be useful to recall in future scenes. Skip transient dialogue, greetings, and meta-commentary.
 
-{{KEYWORD_RULES}}
-
-Recent conversation:
-{{CONTEXT}}
+{existingFactsSection}
+{temporalContext}
+{inputSection}
 
 Respond with ONLY a JSON array of fact objects (no markdown, no code fences).`;
 
