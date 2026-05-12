@@ -35,7 +35,7 @@ import {
   findCategoryByLabel,
   findOrCreateChildCategory,
 } from "./tree-categories.js";
-import { getActiveTunnelVisionBooks } from "./tool-registry.js";
+import { getActiveTunnelVisionBooks, getWritableBooks } from "./tool-registry.js";
 import {
   getCachedWorldInfo,
   buildUidMap,
@@ -160,7 +160,7 @@ function shouldRunLifecycle() {
   const settings = getSettings();
   if (!settings.lifecycleEnabled || settings.globalEnabled === false)
     return false;
-  if (getActiveTunnelVisionBooks().length === 0) return false;
+  if (getWritableBooks().length === 0) return false;
 
   const context = getContext();
   const chatLength = context.chat?.length || 0;
@@ -200,6 +200,8 @@ export async function runLifecycleMaintenance(force = false) {
 
   const activeBooks = getActiveTunnelVisionBooks();
   if (activeBooks.length === 0) return null;
+  const writableBooks = getWritableBooks();
+  if (writableBooks.length === 0) return null;
 
   const chatId = getChatId();
   _lifecycleRunning = true;
@@ -223,7 +225,7 @@ export async function runLifecycleMaintenance(force = false) {
   console.log("[TunnelVision] Memory lifecycle maintenance starting");
 
   try {
-    for (const bookName of activeBooks) {
+    for (const bookName of writableBooks) {
       if (getChatId() !== chatId || task.cancelled) break;
 
       const bookData = await getCachedWorldInfo(bookName);
@@ -268,7 +270,7 @@ export async function runLifecycleMaintenance(force = false) {
 
     if (!task.cancelled) {
       let maxOrderValue = 0;
-      for (const bookName of activeBooks) {
+      for (const bookName of writableBooks) {
         const bd = await getCachedWorldInfo(bookName);
         if (!bd?.entries) continue;
         for (const key of Object.keys(bd.entries)) {
@@ -293,7 +295,7 @@ export async function runLifecycleMaintenance(force = false) {
 
       // Count total entries for adaptive lifecycle tracking
       let totalEntries = 0;
-      for (const bookName of activeBooks) {
+      for (const bookName of writableBooks) {
         const bd = await getCachedWorldInfo(bookName);
         if (!bd?.entries) continue;
         for (const key of Object.keys(bd.entries)) {

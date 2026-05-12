@@ -33,6 +33,7 @@ const LOOP_THRESHOLD = 3;
 // so smart-context can filter its candidates to match.
 
 const _selectivelyRetrievedUids = new Set();
+const _selectivelyRetrievedEntryKeys = new Set();
 
 /**
  * Get the set of UIDs the model explicitly selected this turn.
@@ -42,11 +43,16 @@ export function getSelectivelyRetrievedUids() {
     return _selectivelyRetrievedUids;
 }
 
+export function getSelectivelyRetrievedEntryKeys() {
+    return _selectivelyRetrievedEntryKeys;
+}
+
 /**
  * Clear selective retrieval tracking. Call at GENERATION_STARTED.
  */
 export function resetSelectiveRetrievalTracker() {
     _selectivelyRetrievedUids.clear();
+    _selectivelyRetrievedEntryKeys.clear();
 }
 
 /**
@@ -492,7 +498,7 @@ async function buildEntryManifest(nodeId) {
  * Resolve specific entries by UID across all active lorebooks.
  * Used in selective retrieval mode when the model picks entries from the manifest.
  * @param {number[]} uids
- * @returns {Promise<string>}
+ * @returns {Promise<{ content: string, entryKeys: string[] }>}
  */
 async function resolveEntriesByUid(uids) {
     const results = [];
@@ -516,7 +522,7 @@ async function resolveEntriesByUid(uids) {
         }
     }
 
-    return results.join('\n\n');
+    return { content: results.join('\n\n'), entryKeys: [...seen] };
 }
 
 /**
@@ -786,7 +792,7 @@ CROSS-BOOK SEARCH: Use action "search" with a "query" to find entries by keyword
  * @returns {Promise<string>}
  */
 async function handleSelectiveEntryRetrieval(entryUids) {
-    const content = await resolveEntriesByUid(entryUids);
+    const { content, entryKeys } = await resolveEntriesByUid(entryUids);
     if (!content) {
         return `No entries found for UIDs: ${entryUids.join(', ')}. Double-check the UIDs from the manifest — they must be numeric entry UIDs, not node IDs.`;
     }
@@ -794,6 +800,9 @@ async function handleSelectiveEntryRetrieval(entryUids) {
     // can filter its candidates to only these entries
     for (const uid of entryUids) {
         _selectivelyRetrievedUids.add(Number(uid));
+    }
+    for (const key of entryKeys) {
+        _selectivelyRetrievedEntryKeys.add(key);
     }
     console.log(`[TunnelVision] Selective retrieval: ${entryUids.length} UID(s) requested`);
     return content;

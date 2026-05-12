@@ -29,6 +29,7 @@ import {
 } from "./tree-store.js";
 import {
   getActiveTunnelVisionBooks,
+  getWritableBooks,
   resolveTargetBook,
 } from "./tool-registry.js";
 import {
@@ -135,6 +136,9 @@ function getProcessingGateState() {
   if (activeBooks.length === 0) {
     return { allowed: false, reason: "no-active-books" };
   }
+  if (getWritableBooks().length === 0) {
+    return { allowed: false, reason: "no-writable-books" };
+  }
 
   const context = getContext();
   const chatLength = context.chat?.length || 0;
@@ -233,13 +237,17 @@ export async function runPostTurnProcessor(force = false) {
 
   const activeBooks = getActiveTunnelVisionBooks();
   if (activeBooks.length === 0) return null;
+  const writableBooks = getWritableBooks();
+  if (writableBooks.length === 0) return null;
 
   const context = getContext();
   const chat = context.chat;
   if (!chat || chat.length === 0) return null;
 
   const chatId = getChatId();
-  const { book: targetBook, error } = resolveTargetBook(activeBooks[0]);
+  const { book: targetBook, error } = resolveTargetBook(writableBooks[0], {
+    checkWrite: true,
+  });
   if (error || !targetBook) return null;
 
   _processorRunning = true;
@@ -294,7 +302,7 @@ export async function runPostTurnProcessor(force = false) {
 
     const trackerPromise =
       settings.postTurnUpdateTrackers !== false
-        ? loadTrackerEntries(activeBooks).then((trackers) =>
+        ? loadTrackerEntries(writableBooks).then((trackers) =>
             trackers.length > 0
               ? updateTrackers(trackers, recentExcerpt, chatId)
               : null,
@@ -875,11 +883,16 @@ async function archiveScene(targetBook, chat, sceneChange, chatId) {
     if (summaryResult?.title) {
       result.archived = true;
       result.title = summaryResult.title;
+      if (summaryResult.uid) {
+        _liveRollback?.createdUids.push(summaryResult.uid);
+        persistLiveRollback();
+      }
 
       // Hide old-scene messages and advance watermark with the correct
       // range (watermark+1 → sceneEndIdx), not the full-chat tail.
       try {
-        await hideSummarizedMessages(undefined, { endIndex: sceneEndIdx });
+        const hideStart = Math.max(1, getWatermark() < 0 ? 1 : getWatermark() + 1);
+        await hideSummarizedMessages(undefined, hideStart, sceneEndIdx);
       } catch (e) {
         console.warn("[TunnelVision] Scene archive hide failed:", e);
       }
@@ -1042,13 +1055,23 @@ export async function updateTrackers(trackers, recentExcerpt, chatId) {
     const updates = parseJsonFromLLM(response, { type: "array" });
     if (!Array.isArray(updates) || updates.length === 0) return result;
 
-    const trackerMap = new Map(trackers.map((t) => [t.uid, t]));
+    const trackerMap = new Map(trackers.map((t) => [`${t.book}:${t.uid}`, t]));
+    const trackerUidMap = new Map();
+    for (const tracker of trackers) {
+      const list = trackerUidMap.get(tracker.uid) || [];
+      list.push(tracker);
+      trackerUidMap.set(tracker.uid, list);
+    }
     const hashes = getTrackerHashes();
 
     for (const update of updates) {
       if (!update?.uid || !update?.content) continue;
 
-      const tracker = trackerMap.get(Number(update.uid));
+      const updateUid = Number(update.uid);
+      const requestedBook = update.book ? String(update.book) : "";
+      const tracker = requestedBook
+        ? trackerMap.get(`${requestedBook}:${updateUid}`)
+        : ((trackerUidMap.get(updateUid) || []).length === 1 ? trackerUidMap.get(updateUid)[0] : null);
       if (!tracker) continue;
 
       const newContent = String(update.content).trim();
@@ -1362,8 +1385,12 @@ function formatCharCard(char) {
 export async function createTrackerForCharacter(characterName) {
   const activeBooks = getActiveTunnelVisionBooks();
   if (activeBooks.length === 0) throw new Error("No active lorebooks");
+  const writableBooks = getWritableBooks();
+  if (writableBooks.length === 0) throw new Error("No writable lorebooks");
 
-  const { book: targetBook, error } = resolveTargetBook(activeBooks[0]);
+  const { book: targetBook, error } = resolveTargetBook(writableBooks[0], {
+    checkWrite: true,
+  });
   if (error || !targetBook)
     throw new Error(error || "Could not resolve target lorebook");
 

@@ -314,23 +314,18 @@ export function resolveTargetBook(requestedBook, { checkWrite = false } = {}) {
         return { book: '', error: 'No active TunnelVision lorebooks.' };
     }
 
-    // Filter to writable books if checking permissions
-    const candidateBooks = checkWrite ? activeBooks.filter(canWriteBook) : activeBooks;
-    if (checkWrite && candidateBooks.length === 0) {
-        return { book: '', error: 'No writable lorebooks. All active lorebooks are set to read-only.' };
-    }
-
-    // Single candidate: always use it, regardless of what the AI typed
-    if (candidateBooks.length === 1) {
-        return { book: candidateBooks[0], error: null };
-    }
-
-    // Multiple candidates: validate the AI's choice
-    if (!requestedBook) {
-        const desc = getBookListWithDescriptions({ writableOnly: checkWrite });
-        return { book: '', error: `Multiple lorebooks active. You must specify which one.\n${desc}` };
-    }
     if (!activeBooks.includes(requestedBook)) {
+        if (!requestedBook) {
+            const candidateBooks = checkWrite ? activeBooks.filter(canWriteBook) : activeBooks;
+            if (checkWrite && candidateBooks.length === 0) {
+                return { book: '', error: 'No writable lorebooks. All active lorebooks are set to read-only.' };
+            }
+            if (candidateBooks.length === 1) {
+                return { book: candidateBooks[0], error: null };
+            }
+            const desc = getBookListWithDescriptions({ writableOnly: checkWrite });
+            return { book: '', error: `Multiple lorebooks active. You must specify which one.\n${desc}` };
+        }
         const desc = getBookListWithDescriptions({ writableOnly: checkWrite });
         return { book: '', error: `Lorebook "${requestedBook}" is not active.\n${desc}` };
     }
@@ -660,6 +655,12 @@ function buildGuideDescription(allDefs, disabled) {
 export async function registerTools() {
     unregisterTools();
 
+    const settings = getSettings();
+    if (settings.globalEnabled === false) {
+        _trackerListCache = '';
+        return;
+    }
+
     const activeBooks = getActiveTunnelVisionBooks();
     if (activeBooks.length === 0) {
         _trackerListCache = '';
@@ -669,7 +670,6 @@ export async function registerTools() {
     // Pre-fetch tracker list for injection into Search and Update descriptions
     _trackerListCache = await getTrackerList();
 
-    const settings = getSettings();
     const disabled = settings.disabledTools || {};
 
     const allDefs = getAllToolDefinitions();
