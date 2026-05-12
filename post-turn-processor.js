@@ -48,6 +48,8 @@ import {
   getWatermark,
   setWatermark,
   hideSummarizedMessages,
+  getVisibleMessageIdsInRange,
+  unhideSummarizedMessages,
 } from "./tools/summarize.js";
 import {
   getChatId,
@@ -293,26 +295,23 @@ export async function runPostTurnProcessor(force = false) {
     if (getChatId() !== chatId || task.cancelled) return null;
 
     // ── Steps 1 + 3 in parallel: Fact Extraction and Tracker Updates ──
-    // These are independent LLM calls that don't depend on each other.
-    // Scene archiving (Step 2) waits for fact extraction since it needs scene detection.
-    const analysisPromise =
+    // These both save lorebooks, so keep the writes serialized.
+    // Scene archiving (Step 2) still waits for fact extraction since it needs scene detection.
+    const analysisResult =
       settings.postTurnExtractFacts !== false
-        ? analyzeExchange(targetBook, recentExcerpt, chatId)
-        : Promise.resolve(null);
+        ? await analyzeExchange(targetBook, recentExcerpt, chatId)
+        : null;
 
-    const trackerPromise =
+    if (getChatId() !== chatId || task.cancelled) return null;
+
+    const trackers =
       settings.postTurnUpdateTrackers !== false
-        ? loadTrackerEntries(writableBooks).then((trackers) =>
-            trackers.length > 0
-              ? updateTrackers(trackers, recentExcerpt, chatId)
-              : null,
-          )
-        : Promise.resolve(null);
-
-    const [analysisResult, trackerResult] = await Promise.all([
-      analysisPromise,
-      trackerPromise,
-    ]);
+        ? await loadTrackerEntries(writableBooks)
+        : [];
+    const trackerResult =
+      trackers.length > 0
+        ? await updateTrackers(trackers, recentExcerpt, chatId)
+        : null;
 
     if (analysisResult) {
       result.factsCreated = analysisResult.factsCreated;
@@ -891,8 +890,18 @@ async function archiveScene(targetBook, chat, sceneChange, chatId) {
       // Hide old-scene messages and advance watermark with the correct
       // range (watermark+1 → sceneEndIdx), not the full-chat tail.
       try {
-        const hideStart = Math.max(1, getWatermark() < 0 ? 1 : getWatermark() + 1);
-        await hideSummarizedMessages(undefined, hideStart, sceneEndIdx);
+        const previousWatermark = getWatermark();
+        const hideStart = Math.max(1, previousWatermark < 0 ? 1 : previousWatermark + 1);
+        if (_liveRollback) {
+          _liveRollback.previousWatermark = previousWatermark;
+          persistLiveRollback();
+        }
+        const hiddenMessageIds = getVisibleMessageIdsInRange(hideStart, sceneEndIdx);
+        const hideResult = await hideSummarizedMessages(undefined, hideStart, sceneEndIdx);
+        if (hideResult && _liveRollback) {
+          _liveRollback.hiddenRange = { start: hideStart, end: sceneEndIdx, previousWatermark, messageIds: hiddenMessageIds };
+          persistLiveRollback();
+        }
       } catch (e) {
         console.warn("[TunnelVision] Scene archive hide failed:", e);
       }
@@ -1571,6 +1580,21 @@ async function rollbackLastPostTurn() {
         );
       }
     }
+  }
+
+  if (rb.hiddenRange) {
+    try {
+      await unhideSummarizedMessages(
+        rb.hiddenRange.start,
+        rb.hiddenRange.end,
+        rb.hiddenRange.previousWatermark,
+        rb.hiddenRange.messageIds,
+      );
+    } catch (e) {
+      console.warn("[TunnelVision] Rollback: failed to unhide summarized messages:", e);
+    }
+  } else if (Number.isFinite(rb.previousWatermark)) {
+    setWatermark(rb.previousWatermark);
   }
 
   _liveRollback = null;

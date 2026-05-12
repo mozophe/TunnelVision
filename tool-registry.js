@@ -360,7 +360,7 @@ export function getWritableBooks() {
  * @returns {string[]}
  */
 export function getInjectionManagedBooks() {
-    return getActiveTunnelVisionBooks().filter(b => !isNativeInjectionBook(b));
+    return getActiveTunnelVisionBooks().filter(b => canReadBook(b) && !isNativeInjectionBook(b));
 }
 
 /**

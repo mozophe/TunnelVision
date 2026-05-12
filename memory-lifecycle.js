@@ -734,6 +734,12 @@ async function compressVerboseEntries(bookName, bookData, chatId) {
       const uidMap = buildUidMap(freshBookData.entries);
       const freshEntry = uidMap.get(entry.uid);
       if (!freshEntry) continue;
+      if ((freshEntry.content || "") !== entry.content) {
+        console.warn(
+          `[TunnelVision] Lifecycle: skipped compression for "${entry.title}" because it changed during analysis`,
+        );
+        continue;
+      }
 
       recordEntryVersion(bookName, entry.uid, {
         source: "lifecycle",

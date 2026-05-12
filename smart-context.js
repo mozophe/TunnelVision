@@ -33,7 +33,7 @@
 import { eventSource, event_types } from "../../../../script.js";
 import { getContext } from "../../../st-context.js";
 import { getSettings, getTrackerUids, getTree } from "./tree-store.js";
-import { getActiveTunnelVisionBooks, getInjectionManagedBooks } from "./tool-registry.js";
+import { getInjectionManagedBooks } from "./tool-registry.js";
 import { getSelectivelyRetrievedEntryKeys, getSelectivelyRetrievedUids } from "./tools/search.js";
 import { getCachedWorldInfoSync, getCachedWorldInfo, getEntryTurnIndex } from "./entry-manager.js";
 import { getEntryTitle, getMaxContextTokens } from "./agent-utils.js";
@@ -85,6 +85,7 @@ let _preWarmCacheKey = null;
 let _preWarmSource = "smart-context";
 let _lastReportedPreWarmKey = null;
 let _preWarmCachedAt = 0;
+let _preWarmSequence = 0;
 const PREWARM_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 
 function buildPreWarmCacheKey() {
@@ -93,7 +94,7 @@ function buildPreWarmCacheKey() {
     const settings = getSettings();
     const chat = context.chat || [];
     const chatLen = chat.length;
-    const books = getActiveTunnelVisionBooks().sort().join(",");
+    const books = getInjectionManagedBooks().sort().join(",");
     const settingsFingerprint = JSON.stringify({
       smartContextLookback: settings.smartContextLookback || 6,
     });
@@ -126,6 +127,7 @@ function isPreWarmCacheFresh(cacheKey) {
 
 /** Invalidate the pre-warming cache when entries change or books are modified. */
 export function invalidatePreWarmCache() {
+  _preWarmSequence++;
   _preWarmedCandidates = null;
   _preWarmCacheKey = null;
   _preWarmSource = "smart-context";
@@ -143,6 +145,10 @@ let _lastInjectedEntries = [];
 let _lastReportedInjectionKey = null;
 let _scInitialized = false;
 
+function makeSmartEntryKey(bookName, uid) {
+  return `${bookName || ""}:${uid}`;
+}
+
 // ── Semantic Key Expansion (1A) ──────────────────────────────────
 
 /** Transient cache: entry UID → derived alias keys. Cleared on invalidatePreWarmCache. */
@@ -158,19 +164,20 @@ const PROPER_NOUN_PHRASE_RE = /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/g;
  * @param {Object} entry - Lorebook entry
  * @returns {string[]} Lowercase alias keys
  */
-function deriveAliasKeys(entry) {
-  const cached = _derivedKeyCache.get(entry.uid);
+function deriveAliasKeys(entry, bookName = "") {
+  const cacheKey = makeSmartEntryKey(bookName, entry.uid);
+  const cached = _derivedKeyCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
   const content = (entry.content || "").trim();
   if (!content) {
-    _derivedKeyCache.set(entry.uid, []);
+    _derivedKeyCache.set(cacheKey, []);
     return [];
   }
 
   const firstSentenceMatch = content.match(/^[^.!?\n]+[.!?]?/);
   if (!firstSentenceMatch) {
-    _derivedKeyCache.set(entry.uid, []);
+    _derivedKeyCache.set(cacheKey, []);
     return [];
   }
 
@@ -202,7 +209,7 @@ function deriveAliasKeys(entry) {
   }
 
   const uniqueAliases = [...new Set(aliases)];
-  _derivedKeyCache.set(entry.uid, uniqueAliases);
+  _derivedKeyCache.set(cacheKey, uniqueAliases);
   return uniqueAliases;
 }
 
@@ -239,6 +246,7 @@ export function computeEntryTier(
     isSummary,
     feedbackMap,
     relevanceMap,
+    entryKey = String(entry.uid),
     chatLength,
     maxUid,
     turnIndex = -1,
@@ -251,9 +259,9 @@ export function computeEntryTier(
   if (isStorySummaryEntry(entry)) return TIER_HOT;
   if (isActSummaryEntry(entry)) return TIER_WARM;
 
-  const fb = feedbackMap?.[entry.uid];
+  const fb = feedbackMap?.[entryKey];
   const lastRef = fb?.lastReferenced || 0;
-  const lastSeen = relevanceMap?.[entry.uid] || 0;
+  const lastSeen = relevanceMap?.[entryKey] || 0;
   const mostRecent = Math.max(lastRef, lastSeen);
   const elapsed = mostRecent > 0 ? Date.now() - mostRecent : Infinity;
 
@@ -294,16 +302,16 @@ const TIER_SCORE_ADJUST = {
 /** @type {Set<number>[]} Ring buffer of UID sets from last N turns' injections. */
 const _recentInjections = [];
 
-function cooldownPenalty(uid) {
+function cooldownPenalty(entryKey) {
   let penalty = 0;
   for (const turnSet of _recentInjections) {
-    if (turnSet.has(uid)) penalty += COOLDOWN_PENALTY_PER_TURN;
+    if (turnSet.has(entryKey)) penalty += COOLDOWN_PENALTY_PER_TURN;
   }
   return penalty;
 }
 
-function recordInjections(uids) {
-  _recentInjections.push(new Set(uids));
+function recordInjections(entryKeys) {
+  _recentInjections.push(new Set(entryKeys));
   while (_recentInjections.length > COOLDOWN_WINDOW) {
     _recentInjections.shift();
   }
@@ -499,9 +507,9 @@ function computeTreeProximityBoosts(candidates, activeBooks) {
  * @param {Record<string, Object>} feedbackMap
  * @returns {number} Negative penalty (0 or less)
  */
-function negativeSignalPenalty(entry, feedbackMap) {
+function negativeSignalPenalty(entry, feedbackMap, entryKey = String(entry.uid)) {
   let penalty = 0;
-  const fb = feedbackMap[entry.uid];
+  const fb = feedbackMap[entryKey];
   if (fb && fb.injections >= STALE_INJECTION_THRESHOLD && fb.references === 0) {
     penalty += STALE_INJECTION_PENALTY;
   }
@@ -710,7 +718,7 @@ function buildPresentKeySet(activeBooks, recentText) {
  * @param {Set<string>} [presentKeySet] - Pre-built set of keys found in recentText (O(1) lookup)
  * @returns {number} Relevance score (0 = no match, higher = more relevant)
  */
-export function scoreEntry(entry, recentText, presentKeySet) {
+export function scoreEntry(entry, recentText, presentKeySet, bookName = "") {
   if (!recentText) return 0;
 
   const useFastPath = presentKeySet instanceof Set;
@@ -739,7 +747,7 @@ export function scoreEntry(entry, recentText, presentKeySet) {
     }
   }
 
-  const derivedKeys = deriveAliasKeys(entry);
+  const derivedKeys = deriveAliasKeys(entry, bookName);
   for (const dk of derivedKeys) {
     if (
       dk.length >= 3 &&
@@ -762,13 +770,13 @@ function getRelevanceMap() {
   }
 }
 
-function touchRelevance(uids) {
+function touchRelevance(entryKeys) {
   try {
     const context = getContext();
     if (!context.chatMetadata) return;
     const map = context.chatMetadata[RELEVANCE_KEY] || {};
     const now = Date.now();
-    for (const uid of uids) map[uid] = now;
+    for (const entryKey of entryKeys) map[entryKey] = now;
     context.chatMetadata[RELEVANCE_KEY] = map;
     context.saveMetadataDebounced?.();
   } catch {
@@ -776,8 +784,8 @@ function touchRelevance(uids) {
   }
 }
 
-function relevanceDecay(uid, relevanceMap) {
-  const lastSeen = relevanceMap[uid];
+function relevanceDecay(entryKey, relevanceMap) {
+  const lastSeen = relevanceMap[entryKey];
   if (!lastSeen) return 0;
   const hoursAgo = (Date.now() - lastSeen) / (1000 * 60 * 60);
   if (hoursAgo < 0.5) return 5;
@@ -817,9 +825,9 @@ function saveFeedbackMap(map) {
  * Positive for entries the AI actually references; negative for repeatedly-ignored entries.
  * Enhanced (3A): includes rolling value score from injection samples.
  */
-function feedbackBoost(uid) {
+function feedbackBoost(entryKey) {
   const map = getFeedbackMap();
-  const data = map[uid];
+  const data = map[entryKey];
   if (!data) return 0;
 
   let boost = 0;
@@ -893,9 +901,9 @@ export function processRelevanceFeedback() {
   const feedbackMap = getFeedbackMap();
 
   for (const entry of _lastInjectedEntries) {
-    const uid = String(entry.uid);
-    if (!feedbackMap[uid]) {
-      feedbackMap[uid] = {
+    const entryKey = entry.entryKey || makeSmartEntryKey(entry.bookName, entry.uid);
+    if (!feedbackMap[entryKey]) {
+      feedbackMap[entryKey] = {
         injections: 0,
         references: 0,
         missStreak: 0,
@@ -904,7 +912,7 @@ export function processRelevanceFeedback() {
       };
     }
 
-    const data = feedbackMap[uid];
+    const data = feedbackMap[entryKey];
     data.injections++;
 
     const referenced = isEntryReferenced(entry, responseText);
@@ -1073,7 +1081,8 @@ function collectMentionedEntryKeys(entry, presentKeySet, currentMentionKeys) {
 
 function applyPrimaryScoringStages(relevance, entry, ctx, bookName) {
   let score = relevance;
-  score += relevanceDecay(entry.uid, ctx.relevanceMap);
+  const entryKey = makeSmartEntryKey(bookName, entry.uid);
+  score += relevanceDecay(entryKey, ctx.relevanceMap);
   const turnIndex = getEntryTurnIndex(bookName, entry.uid);
   if (turnIndex >= 0 && ctx.chatLength > 0) {
     if (ctx.chatLength - turnIndex <= 100) score += 3;
@@ -1081,10 +1090,10 @@ function applyPrimaryScoringStages(relevance, entry, ctx, bookName) {
     score += 3;
   }
   score += worldStateBoost(entry, ctx.wsSignals);
-  score += feedbackBoost(entry.uid);
-  score += cooldownPenalty(entry.uid);
+  score += feedbackBoost(entryKey);
+  score += cooldownPenalty(entryKey);
   score += phaseBoost(entry, ctx.phase);
-  score += negativeSignalPenalty(entry, ctx.feedbackMap);
+  score += negativeSignalPenalty(entry, ctx.feedbackMap, entryKey);
   return score;
 }
 
@@ -1094,8 +1103,10 @@ function computeTierAdjustedScore(relevance, entry, opts) {
     isSummary: opts.isSummary,
     feedbackMap: opts.feedbackMap,
     relevanceMap: opts.relevanceMap,
+    entryKey: opts.entryKey,
     chatLength: opts.chatLength,
     maxUid: opts.maxUid,
+    turnIndex: opts.turnIndex,
     arcOverlap: opts.arcOverlap,
   });
   const tierAdj = TIER_SCORE_ADJUST[tier];
@@ -1108,12 +1119,13 @@ function computeTierAdjustedScore(relevance, entry, opts) {
 }
 
 function pushCandidateIfEligible(candidates, candidate, effectiveThreshold) {
-  const { entry, bookName, score, isTracker, isSummary, tier } = candidate;
+  const { entry, bookName, entryKey, score, isTracker, isSummary, tier } = candidate;
 
   if (isTracker && score > 0) {
     candidates.push({
       entry,
       bookName,
+      entryKey,
       score: score + 20,
       isTracker: true,
       isSummary: false,
@@ -1126,6 +1138,7 @@ function pushCandidateIfEligible(candidates, candidate, effectiveThreshold) {
     candidates.push({
       entry,
       bookName,
+      entryKey,
       score: score + 2,
       isTracker: false,
       isSummary: true,
@@ -1138,6 +1151,7 @@ function pushCandidateIfEligible(candidates, candidate, effectiveThreshold) {
     candidates.push({
       entry,
       bookName,
+      entryKey,
       score,
       isTracker,
       isSummary,
@@ -1214,11 +1228,13 @@ function scoreCandidates(activeBooks, recentText) {
       const isActSummary = isActSummaryEntry(entry);
       const isStorySummary = isStorySummaryEntry(entry);
       const isSummary = isSummaryEntry(entry);
+      const entryKey = makeSmartEntryKey(bookName, entry.uid);
 
       if (isStorySummary) {
         candidates.push({
           entry,
           bookName,
+          entryKey,
           score: 50,
           isTracker: false,
           isSummary: true,
@@ -1227,7 +1243,7 @@ function scoreCandidates(activeBooks, recentText) {
         continue;
       }
 
-      let relevance = scoreEntry(entry, recentText, presentKeySet);
+      let relevance = scoreEntry(entry, recentText, presentKeySet, bookName);
       relevance = applySummaryHierarchyAdjustments(
         relevance,
         entry,
@@ -1253,6 +1269,7 @@ function scoreCandidates(activeBooks, recentText) {
         isSummary,
         feedbackMap: ctx.feedbackMap,
         relevanceMap: ctx.relevanceMap,
+        entryKey,
         chatLength: ctx.chatLength,
         maxUid: ctx.maxUid,
         turnIndex,
@@ -1265,6 +1282,7 @@ function scoreCandidates(activeBooks, recentText) {
         {
           entry,
           bookName,
+          entryKey,
           score: tierResult.score,
           isTracker,
           isSummary,
@@ -1377,6 +1395,8 @@ export function buildSmartContextPrompt() {
   } else {
     candidates = scoreCandidates(activeBooks, recentText);
   }
+  const activeBookSet = new Set(activeBooks);
+  candidates = candidates.filter((c) => activeBookSet.has(c.bookName));
 
   if (candidates.length === 0) return "";
 
@@ -1421,7 +1441,7 @@ export function buildSmartContextPrompt() {
   withDensity.sort((a, b) => b.density - a.density);
 
   const selected = [];
-  const selectedUids = [];
+  const selectedInjectionKeys = [];
   const selectedEntryInfo = [];
   let totalChars = 0;
   let trackerSlots = 0;
@@ -1435,9 +1455,10 @@ export function buildSmartContextPrompt() {
       true,
     );
     selected.push(entryText);
-    selectedUids.push(storySummaryCand.entry.uid);
+    selectedInjectionKeys.push(storySummaryCand.entryKey || makeSmartEntryKey(storySummaryCand.bookName, storySummaryCand.entry.uid));
     selectedEntryInfo.push({
       uid: storySummaryCand.entry.uid,
+      entryKey: storySummaryCand.entryKey || makeSmartEntryKey(storySummaryCand.bookName, storySummaryCand.entry.uid),
       title: (storySummaryCand.entry.comment || "").trim(),
       keys: (storySummaryCand.entry.key || []).map((k) => String(k).trim()),
       bookName: storySummaryCand.bookName,
@@ -1457,9 +1478,10 @@ export function buildSmartContextPrompt() {
     if (totalChars + entryText.length > maxChars) continue;
 
     selected.push(entryText);
-    selectedUids.push(c.entry.uid);
+    selectedInjectionKeys.push(c.entryKey || makeSmartEntryKey(c.bookName, c.entry.uid));
     selectedEntryInfo.push({
       uid: c.entry.uid,
+      entryKey: c.entryKey || makeSmartEntryKey(c.bookName, c.entry.uid),
       title: (c.entry.comment || "").trim(),
       keys: (c.entry.key || []).map((k) => String(k).trim()),
       bookName: c.bookName,
@@ -1480,9 +1502,10 @@ export function buildSmartContextPrompt() {
     if (totalChars + entryText.length > maxChars) continue;
 
     selected.push(entryText);
-    selectedUids.push(c.entry.uid);
+    selectedInjectionKeys.push(c.entryKey || makeSmartEntryKey(c.bookName, c.entry.uid));
     selectedEntryInfo.push({
       uid: c.entry.uid,
+      entryKey: c.entryKey || makeSmartEntryKey(c.bookName, c.entry.uid),
       title: (c.entry.comment || "").trim(),
       keys: (c.entry.key || []).map((k) => String(k).trim()),
       bookName: c.bookName,
@@ -1498,10 +1521,10 @@ export function buildSmartContextPrompt() {
 
   _lastInjectedEntries = selectedEntryInfo;
   reportSmartContextSelections(selectedEntryInfo, selectionSource);
-  if (selectedUids.length > 0) touchRelevance(selectedUids);
+  if (selectedInjectionKeys.length > 0) touchRelevance(selectedInjectionKeys);
 
   // 1B: Record injections for cooldown
-  recordInjections(selectedUids);
+  recordInjections(selectedInjectionKeys);
 
   return [
     `[TunnelVision Smart Context — ${selected.length} relevant entries auto-retrieved based on current scene. This is supplemental memory; the AI can search for more with TunnelVision_Search if needed.]`,
@@ -1534,6 +1557,7 @@ export async function preWarmSmartContext({ source = 'smart-context' } = {}) {
   const cacheKey = buildPreWarmCacheKey();
   if (!cacheKey) return;
   if (isPreWarmCacheFresh(cacheKey)) return;
+  const runSequence = ++_preWarmSequence;
 
   const lookback = settings.smartContextLookback || 6;
   const recentText = extractMentionsFromChat(chat, lookback);
@@ -1568,7 +1592,7 @@ export async function preWarmSmartContext({ source = 'smart-context' } = {}) {
     if (isEmbeddingAvailable()) {
       const boosts = await getEmbeddingSimilarityBoosts(candidates, recentText);
       for (const c of candidates) {
-        const bonus = boosts.get(c.entry.uid);
+        const bonus = boosts.get(c.entryKey || makeSmartEntryKey(c.bookName, c.entry.uid));
         if (bonus) {
           c.score += bonus;
         }
@@ -1577,6 +1601,11 @@ export async function preWarmSmartContext({ source = 'smart-context' } = {}) {
     }
   } catch (e) {
     console.debug("[TunnelVision] Embedding similarity skipped:", e.message);
+  }
+
+  if (runSequence !== _preWarmSequence || cacheKey !== buildPreWarmCacheKey()) {
+    console.debug("[TunnelVision] Smart context prewarm result discarded: stale cache key");
+    return;
   }
 
   _preWarmedCandidates = candidates;
@@ -1618,11 +1647,7 @@ function applyRerankResults(allCandidates, topN, response) {
   for (let rank = 0; rank < nums.length; rank++) {
     const idx = parseInt(nums[rank], 10) - 1;
     if (idx >= 0 && idx < topN.length) {
-      const uid = topN[idx].entry.uid;
-      const candidate = allCandidates.find((c) => c.entry.uid === uid);
-      if (candidate) {
-        candidate.score += Math.max(maxBoost - rank, 1);
-      }
+      topN[idx].score += Math.max(maxBoost - rank, 1);
     }
   }
   allCandidates.sort((a, b) => b.score - a.score);

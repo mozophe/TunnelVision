@@ -33,10 +33,11 @@ import { initCommands } from './commands.js';
 import { initAutoSummary } from './auto-summary.js';
 import { initPostTurnProcessor } from './post-turn-processor.js';
 import { initMemoryLifecycle } from './memory-lifecycle.js';
-import { initSmartContext, initHierarchyRefs } from './smart-context.js';
-import { initWorldState } from './world-state.js';
+import { buildSmartContextPrompt, initSmartContext, initHierarchyRefs } from './smart-context.js';
+import { buildWorldStatePrompt, initWorldState } from './world-state.js';
 import { clearSidecarRetrievalPrompt, runSidecarRetrieval } from './sidecar-retrieval.js';
 import { runSidecarWriter } from './sidecar-writer.js';
+import { setInjectionSizes } from './agent-utils.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names } from '../../../world-info.js';
 
@@ -648,6 +649,8 @@ function onWorldInfoActivatedForTracking(entryList) {
 
 const TV_PROMPT_KEY = 'tunnelvision_mandatory';
 const TV_NOTEBOOK_KEY = 'tunnelvision_notebook';
+const TV_WORLDSTATE_KEY = 'tunnelvision_worldstate';
+const TV_SMARTCTX_KEY = 'tunnelvision_smartcontext';
 
 /**
  * Map a position setting string to the ST extension_prompt_types enum.
@@ -916,6 +919,9 @@ async function onGenerationStarted(type, opts, dryRun) {
         _toolRecursionDepth = 0;
         window.TunnelVision_isRecursiveToolPass = false;
         setExtensionPrompt(TV_PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        setExtensionPrompt(TV_WORLDSTATE_KEY, '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        setExtensionPrompt(TV_SMARTCTX_KEY, '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        setInjectionSizes({ mandatory: 0, worldState: 0, smartContext: 0, notebook: 0 });
         console.debug('[TunnelVision] Pending slash command detected — skipping pre-command TV sidecar/tool work');
         return;
     }
@@ -955,6 +961,9 @@ async function onGenerationStarted(type, opts, dryRun) {
     // be writing the actual response. Then skip all other heavy work.
     if (isRecursiveToolPass) {
         setExtensionPrompt(TV_PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        setExtensionPrompt(TV_WORLDSTATE_KEY, '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        setExtensionPrompt(TV_SMARTCTX_KEY, '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        setInjectionSizes({ mandatory: 0, worldState: 0, smartContext: 0, notebook: 0 });
         return;
     }
 
@@ -962,6 +971,7 @@ async function onGenerationStarted(type, opts, dryRun) {
     resetNotebookWriteGuard();
 
     const settings = getSettings();
+    const injectionSizes = { mandatory: 0, worldState: 0, smartContext: 0, notebook: 0 };
     let runtimeState = null;
 
     if (settings.globalEnabled !== false) {
@@ -1003,6 +1013,7 @@ async function onGenerationStarted(type, opts, dryRun) {
     ) {
         const prompt = settings.mandatoryPromptText || '[IMPORTANT INSTRUCTION: You MUST use at least one TunnelVision tool call this turn.]';
         setExtensionPrompt(TV_PROMPT_KEY, prompt, mandatoryPosition, mandatoryDepth, false, mandatoryRole);
+        injectionSizes.mandatory = prompt.length;
     } else {
         setExtensionPrompt(TV_PROMPT_KEY, '', mandatoryPosition, mandatoryDepth, false, mandatoryRole);
         if (
@@ -1023,6 +1034,8 @@ async function onGenerationStarted(type, opts, dryRun) {
         }
     }
 
+    Object.assign(injectionSizes, setWorldStateAndSmartContextPrompts(settings));
+
     // Inject notebook contents every turn (if enabled and notes exist)
     const notebookPosition = mapPositionSetting(settings.notebookPromptPosition);
     const notebookDepth = settings.notebookPromptDepth ?? 1;
@@ -1033,9 +1046,11 @@ async function onGenerationStarted(type, opts, dryRun) {
     if (settings.globalEnabled !== false && settings.notebookEnabled !== false) {
         const notebookPrompt = buildNotebookPrompt();
         setExtensionPrompt(TV_NOTEBOOK_KEY, notebookPrompt, notebookPosition, notebookDepth, false, notebookRole);
+        injectionSizes.notebook = notebookPrompt.length;
     } else {
         setExtensionPrompt(TV_NOTEBOOK_KEY, '', notebookPosition, notebookDepth, false, notebookRole);
     }
+    setInjectionSizes(injectionSizes);
 }
 
 /**
@@ -1050,6 +1065,7 @@ async function onMessageReceived(_messageId, type) {
     console.debug(`[TunnelVision] MESSAGE_RECEIVED: messageId=${_messageId} type="${type}"`);
     const context = getContext();
     const messageIndex = Number(_messageId);
+    const scheduledChatId = context.chatId || null;
     const receivedMsg = Number.isInteger(messageIndex)
         ? context.chat?.[messageIndex]
         : context.chat?.[context.chat.length - 1];
@@ -1086,7 +1102,7 @@ async function onMessageReceived(_messageId, type) {
         _sidecarWriterDebounceTimer = setTimeout(async () => {
             _sidecarWriterDebounceTimer = null;
             try {
-                await runSidecarWriter();
+                await runSidecarWriter({ expectedChatId: scheduledChatId, expectedMessageId: messageIndex });
             } catch (err) {
                 console.error('[TunnelVision] Sidecar post-gen writer error (group):', err);
             }
@@ -1096,11 +1112,50 @@ async function onMessageReceived(_messageId, type) {
 
     setTimeout(async () => {
         try {
-            await runSidecarWriter();
+            await runSidecarWriter({ expectedChatId: scheduledChatId, expectedMessageId: messageIndex });
         } catch (err) {
             console.error('[TunnelVision] Sidecar post-gen writer error:', err);
         }
     }, 0);
+}
+
+function setWorldStateAndSmartContextPrompts(settings) {
+    const worldStatePosition = mapPositionSetting(settings.worldStatePosition);
+    const worldStateDepth = settings.worldStateDepth ?? 2;
+    const worldStateRoleSetting = (settings.worldStatePosition === 'in_chat' && settings.worldStateRole === 'user')
+        ? 'system' : settings.worldStateRole;
+    const worldStateRole = mapRoleSetting(worldStateRoleSetting);
+    const smartContextPosition = mapPositionSetting(settings.smartContextPosition);
+    const smartContextDepth = settings.smartContextDepth ?? 3;
+    const smartContextRoleSetting = (settings.smartContextPosition === 'in_chat' && settings.smartContextRole === 'user')
+        ? 'system' : settings.smartContextRole;
+    const smartContextRole = mapRoleSetting(smartContextRoleSetting);
+
+    let worldStatePrompt = '';
+    let smartContextPrompt = '';
+
+    if (settings.globalEnabled !== false && settings.worldStateEnabled) {
+        try {
+            worldStatePrompt = buildWorldStatePrompt();
+        } catch (err) {
+            console.error('[TunnelVision] World state prompt build failed:', err);
+        }
+    }
+    if (settings.globalEnabled !== false && settings.smartContextEnabled) {
+        try {
+            smartContextPrompt = buildSmartContextPrompt();
+        } catch (err) {
+            console.error('[TunnelVision] Smart context prompt build failed:', err);
+        }
+    }
+
+    setExtensionPrompt(TV_WORLDSTATE_KEY, worldStatePrompt, worldStatePosition, worldStateDepth, false, worldStateRole);
+    setExtensionPrompt(TV_SMARTCTX_KEY, smartContextPrompt, smartContextPosition, smartContextDepth, false, smartContextRole);
+
+    return {
+        worldState: worldStatePrompt.length,
+        smartContext: smartContextPrompt.length,
+    };
 }
 
 /**

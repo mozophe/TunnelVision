@@ -23,7 +23,7 @@ import {
     getSettings,
     isNativeInjectionBook,
 } from './tree-store.js';
-import { getReadableBooks } from './tool-registry.js';
+import { getInjectionManagedBooks, getReadableBooks } from './tool-registry.js';
 import { hasEvaluableConditions, separateConditions, mapSelectiveLogic, describeSelectiveLogic, CONDITION_DESCRIPTIONS, CONDITION_LABELS, rollKeywordProbability, formatCondition } from './conditions.js';
 import { isSidecarConfigured, sidecarGenerate, getSidecarModelLabel } from './llm-sidecar.js';
 import { logSidecarRetrieval, logConditionalEvaluations, setSidecarActive } from './activity-feed.js';
@@ -40,7 +40,7 @@ const TV_SIDECAR_RETRIEVAL_KEY = 'tunnelvision_sidecar_retrieval';
  * @returns {string}
  */
 function buildSidecarTreeOverview() {
-    const activeBooks = getReadableBooks();
+    const activeBooks = getInjectionManagedBooks();
     if (activeBooks.length === 0) return '';
 
     let overview = '';
@@ -133,7 +133,7 @@ function extractRecentChat(maxMessages = 10) {
  */
 async function collectConditionalEntries() {
     const results = [];
-    const activeBooks = getReadableBooks();
+    const activeBooks = getInjectionManagedBooks();
 
     for (const bookName of activeBooks) {
         const bookData = await loadWorldInfo(bookName);
@@ -162,6 +162,7 @@ async function collectConditionalEntries() {
             const logic = entry.selective ? mapSelectiveLogic(entry.selectiveLogic ?? 0) : 'AND_ANY';
 
             results.push({
+                ref: `${bookName}::${entry.uid}`,
                 bookName,
                 uid: entry.uid,
                 title: entry.comment || entry.key?.[0] || `Entry #${entry.uid}`,
@@ -203,7 +204,7 @@ function buildConditionalSection(conditionalEntries) {
 
     section += '\nEntries to evaluate:\n';
     for (const entry of conditionalEntries) {
-        section += `- "${entry.title}" (uid:${entry.uid})\n`;
+        section += `- "${entry.title}" (ref:${entry.ref}, uid:${entry.uid})\n`;
 
         // Primary
         const primaryParts = [
@@ -296,7 +297,7 @@ Return ONLY a JSON object:
   "reasoning": "Brief explanation of retrieval choices",
   "nodes": ["tv_123_abc"],
   "conditional_evaluations": [
-    {"uid": 42, "accepted": true, "reason": "Scene mood is tense and characters are in a forest"}
+    {"ref": "Lorebook Name::42", "uid": 42, "accepted": true, "reason": "Scene mood is tense and characters are in a forest"}
   ]
 }
 
@@ -333,7 +334,7 @@ Which node IDs should be retrieved to provide relevant context for the next resp
 /**
  * Parse the sidecar's response to extract node IDs, reasoning, and conditional evaluations.
  * @param {string} response
- * @returns {{ nodeIds: string[], reasoning: string, conditionalEvaluations: Array<{ uid: number, accepted: boolean, reason: string }> }}
+ * @returns {{ nodeIds: string[], reasoning: string, conditionalEvaluations: Array<{ ref?: string, uid: number, accepted: boolean, reason: string }> }}
  */
 function parseSidecarResponse(response) {
     const empty = { nodeIds: [], reasoning: '', conditionalEvaluations: [] };
@@ -354,12 +355,19 @@ function parseSidecarResponse(response) {
                 let conditionalEvaluations = [];
                 if (Array.isArray(parsed.conditional_evaluations)) {
                     conditionalEvaluations = parsed.conditional_evaluations
-                        .filter(e => e && typeof e === 'object' && typeof e.uid === 'number' && typeof e.accepted === 'boolean')
-                        .map(e => ({
-                            uid: e.uid,
-                            accepted: !!e.accepted,
-                            reason: typeof e.reason === 'string' ? e.reason : '',
-                        }));
+                        .filter(e => e && typeof e === 'object' && typeof e.accepted === 'boolean')
+                        .map(e => {
+                            const ref = typeof e.ref === 'string' ? e.ref : '';
+                            const refUid = Number(ref.match(/::(\d+)$/)?.[1]);
+                            const uid = typeof e.uid === 'number' ? e.uid : refUid;
+                            return {
+                                ref,
+                                uid,
+                                accepted: !!e.accepted,
+                                reason: typeof e.reason === 'string' ? e.reason : '',
+                            };
+                        })
+                        .filter(e => Number.isFinite(e.uid));
                 }
 
                 return { nodeIds, reasoning, conditionalEvaluations };
@@ -387,25 +395,25 @@ function parseSidecarResponse(response) {
 
 /**
  * Resolve accepted conditional entries to their content for injection.
- * @param {Array<{ uid: number, accepted: boolean, reason: string }>} evaluations
+ * @param {Array<{ ref?: string, uid: number, accepted: boolean, reason: string }>} evaluations
  * @param {Array<{ bookName: string, uid: number, title: string }>} conditionalEntries
  * @returns {Promise<string>}
  */
 async function resolveConditionalContent(evaluations, conditionalEntries) {
+    const acceptedRefs = new Set(evaluations.filter(e => e.accepted && e.ref).map(e => e.ref));
     const uidCounts = new Map();
-    for (const ce of conditionalEntries) {
-        uidCounts.set(ce.uid, (uidCounts.get(ce.uid) || 0) + 1);
+    for (const ce of conditionalEntries) uidCounts.set(ce.uid, (uidCounts.get(ce.uid) || 0) + 1);
+    for (const e of evaluations) {
+        if (e.accepted && !e.ref && uidCounts.get(e.uid) === 1) {
+            const match = conditionalEntries.find(ce => ce.uid === e.uid);
+            if (match?.ref) acceptedRefs.add(match.ref);
+        }
     }
-    const acceptedUids = new Set(
-        evaluations
-            .filter(e => e.accepted && uidCounts.get(e.uid) === 1)
-            .map(e => e.uid),
-    );
-    if (acceptedUids.size === 0) return '';
+    if (acceptedRefs.size === 0) return '';
 
     const results = [];
     for (const ce of conditionalEntries) {
-        if (!acceptedUids.has(ce.uid)) continue;
+        if (!acceptedRefs.has(ce.ref)) continue;
 
         const bookData = await loadWorldInfo(ce.bookName);
         if (!bookData?.entries) continue;
@@ -438,7 +446,7 @@ export async function runSidecarRetrieval() {
         return;
     }
 
-    const activeBooks = getReadableBooks();
+    const activeBooks = getInjectionManagedBooks();
     if (activeBooks.length === 0) return;
 
     // Build tree overview

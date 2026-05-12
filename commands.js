@@ -25,7 +25,7 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandArgument, ARGUMENT_TYPE } from '../../../slash-commands/SlashCommandArgument.js';
 import { loadWorldInfo } from '../../../world-info.js';
-import { getSettings, getSelectedLorebook, getTree, createTreeNode, saveTree, findNodeById } from './tree-store.js';
+import { canReadBook, canWriteBook, getSettings, getSelectedLorebook, getTree, createTreeNode, saveTree, findNodeById } from './tree-store.js';
 import { getActiveTunnelVisionBooks, resolveTargetBook } from './tool-registry.js';
 import { ingestChatMessages } from './tree-builder.js';
 import { createEntry, mergeEntries, splitEntry, forgetEntry, updateEntry, findEntryByUid } from './entry-manager.js';
@@ -215,6 +215,31 @@ function resolveBook(activeBooks) {
     return name || activeBooks[0];
 }
 
+function resolveAccessibleBook(activeBooks, access, action) {
+    const candidateBooks = access === 'read'
+        ? activeBooks.filter(canReadBook)
+        : access === 'readwrite'
+            ? activeBooks.filter((book) => canReadBook(book) && canWriteBook(book))
+        : access === 'write'
+            ? activeBooks.filter(canWriteBook)
+            : activeBooks;
+    if (candidateBooks.length === 0) {
+        const label = access === 'read' ? 'readable' : access === 'write' ? 'writable' : access === 'readwrite' ? 'readable and writable' : 'active';
+        toastr.warning(`No ${label} TunnelVision lorebooks available for /tv-${action}.`, 'TunnelVision');
+        return null;
+    }
+
+    const selectedLorebook = getSelectedLorebook();
+    if (selectedLorebook && candidateBooks.includes(selectedLorebook)) {
+        return selectedLorebook;
+    }
+    if (candidateBooks.length > 1) {
+        toastr.warning('Multiple eligible lorebooks active - select one in TunnelVision settings first.', 'TunnelVision');
+        return null;
+    }
+    return candidateBooks[0];
+}
+
 function getContextMessages() {
     const settings = getSettings();
     return Number(settings.commandContextMessages) || 50;
@@ -225,6 +250,7 @@ function getContextMessages() {
  * @returns {Promise<string>} Formatted entry list, or empty string
  */
 async function buildEntryListing(bookName) {
+    if (!canReadBook(bookName)) return '';
     const bookData = await loadWorldInfo(bookName);
     if (!bookData?.entries) return '';
 
@@ -286,7 +312,7 @@ function parseJSON(text) {
 // ---------------------------------------------------------------------------
 
 async function handleSearch(_namedArgs, unnamedArg, { activeBooks }) {
-    const bookName = resolveBook(activeBooks);
+    const bookName = resolveAccessibleBook(activeBooks, 'read', 'search');
     if (!bookName) return;
 
     const query = String(unnamedArg || '').trim();
@@ -338,7 +364,7 @@ Return only the most relevant entries (max 10). If nothing matches, return { "re
 }
 
 async function handleRemember(_namedArgs, unnamedArg, { activeBooks }) {
-    const bookName = resolveBook(activeBooks);
+    const bookName = resolveAccessibleBook(activeBooks, 'write', 'remember');
     if (!bookName) return;
 
     const hint = String(unnamedArg || '').trim();
@@ -400,7 +426,7 @@ Return JSON:
 }
 
 async function handleSummarize(_namedArgs, unnamedArg, { activeBooks }) {
-    const bookName = resolveBook(activeBooks);
+    const bookName = resolveAccessibleBook(activeBooks, 'write', 'summarize');
     if (!bookName) return;
 
     const { book: lorebook, error } = resolveTargetBook(bookName, { checkWrite: true });
@@ -459,7 +485,7 @@ Return JSON:
 }
 
 async function handleForget(_namedArgs, unnamedArg, { activeBooks }) {
-    const bookName = resolveBook(activeBooks);
+    const bookName = resolveAccessibleBook(activeBooks, 'readwrite', 'forget');
     if (!bookName) return;
 
     const target = String(unnamedArg || '').trim();
@@ -515,7 +541,7 @@ If no entry matches, return { "uid": null, "reason": "No matching entry found" }
 }
 
 async function handleMerge(_namedArgs, unnamedArg, { activeBooks }) {
-    const bookName = resolveBook(activeBooks);
+    const bookName = resolveAccessibleBook(activeBooks, 'readwrite', 'merge');
     if (!bookName) return;
 
     const hint = String(unnamedArg || '').trim();
@@ -573,7 +599,7 @@ If no entries should be merged, return { "keep_uid": null, "reason": "No duplica
 }
 
 async function handleSplit(_namedArgs, unnamedArg, { activeBooks }) {
-    const bookName = resolveBook(activeBooks);
+    const bookName = resolveAccessibleBook(activeBooks, 'readwrite', 'split');
     if (!bookName) return;
 
     const hint = String(unnamedArg || '').trim();
@@ -716,8 +742,12 @@ async function handleDedupe(_namedArgs, unnamedArg, { activeBooks }) {
             toastr.warning(`Lorebook "${requested}" not found among active books.`, 'TunnelVision');
             return;
         }
+        if (!canReadBook(bookName) || !canWriteBook(bookName)) {
+            toastr.warning(`Lorebook "${bookName}" must be readable and writable for dedupe.`, 'TunnelVision');
+            return;
+        }
     } else {
-        bookName = resolveBook(activeBooks);
+        bookName = resolveAccessibleBook(activeBooks, 'readwrite', 'dedupe');
     }
     if (!bookName) return;
 
@@ -883,8 +913,12 @@ async function handleIngestCommand(_namedArgs, unnamedArg, { activeBooks }) {
             toastr.warning(`Lorebook "${requested}" not found among active books.`, 'TunnelVision');
             return;
         }
+        if (!canWriteBook(targetLorebook)) {
+            toastr.warning(`Lorebook "${targetLorebook}" is not writable.`, 'TunnelVision');
+            return;
+        }
     } else {
-        targetLorebook = resolveBook(activeBooks);
+        targetLorebook = resolveAccessibleBook(activeBooks, 'write', 'ingest');
     }
 
     if (!targetLorebook) return;
