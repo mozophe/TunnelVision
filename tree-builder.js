@@ -326,7 +326,12 @@ async function _buildTreeWithLLM(lorebookName, options = {}) {
     if (!firstResponse) throw new Error('LLM returned empty response for tree categorization.');
 
     const allUids = activeEntries.map(e => e.uid);
-    const tree = await parseLLMTreeResponse(lorebookName, firstResponse, allUids);
+    // For multi-chunk builds, only pass chunk 1's UIDs to the initial parse.
+    // parseLLMTreeResponse's fallback assigns unplaced UIDs to root — if allUids
+    // is passed here, entries from chunks 2+ are pre-assigned to root before those
+    // chunks are even processed, causing mergeLLMResponse to skip them as "already assigned".
+    const chunk1Uids = chunks.length > 1 ? chunks[0].map(e => e.uid) : allUids;
+    const tree = await parseLLMTreeResponse(lorebookName, firstResponse, chunk1Uids);
 
     // Subsequent chunks: run in parallel — each gets the same category snapshot
     if (chunks.length > 1) {
