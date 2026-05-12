@@ -25,7 +25,7 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandArgument, ARGUMENT_TYPE } from '../../../slash-commands/SlashCommandArgument.js';
 import { loadWorldInfo } from '../../../world-info.js';
-import { getSettings, getSelectedLorebook, getTree, createTreeNode, saveTree, findNodeById } from './tree-store.js';
+import { getSettings, getSelectedLorebook, getTree, createTreeNode, saveTree, findNodeById, consolidateSiblingNodes } from './tree-store.js';
 import { getActiveTunnelVisionBooks, resolveTargetBook } from './tool-registry.js';
 import { ingestChatMessages } from './tree-builder.js';
 import { createEntry, mergeEntries, splitEntry, forgetEntry, updateEntry, findEntryByUid } from './entry-manager.js';
@@ -873,13 +873,24 @@ Return JSON — an array with one object per cluster:
         }
     }
 
-    if (mergedCount > 0) {
-        toastr.success(
-            `Deduplication complete: ${mergedCount} entries merged into their clusters. ` +
-            `${errorCount > 0 ? `${errorCount} error(s). ` : ''}` +
-            `Absorbed entries moved to "Deduped" node for review.`,
-            'TunnelVision',
-        );
+    // Consolidate near-duplicate tree category nodes
+    let nodesConsolidated = 0;
+    const tree = getTree(bookName);
+    if (tree?.root) {
+        nodesConsolidated = consolidateSiblingNodes(tree.root);
+        if (nodesConsolidated > 0) saveTree(bookName, tree);
+    }
+
+    if (mergedCount > 0 || nodesConsolidated > 0) {
+        const entryMsg = mergedCount > 0
+            ? `${mergedCount} entr${mergedCount === 1 ? 'y' : 'ies'} merged into their clusters. `
+            : '';
+        const nodeMsg = nodesConsolidated > 0
+            ? `${nodesConsolidated} category node${nodesConsolidated === 1 ? '' : 's'} consolidated. `
+            : '';
+        const errMsg = errorCount > 0 ? `${errorCount} error(s). ` : '';
+        const absorbMsg = mergedCount > 0 ? 'Absorbed entries moved to "Deduped" node for review.' : '';
+        toastr.success(`Deduplication complete: ${entryMsg}${nodeMsg}${errMsg}${absorbMsg}`, 'TunnelVision');
     } else {
         toastr.warning(
             `Deduplication finished but no merges succeeded (${errorCount} error(s)).`,

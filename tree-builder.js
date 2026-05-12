@@ -22,8 +22,9 @@ import {
     saveTree,
     getAllEntryUids,
     getSettings,
+    consolidateSiblingNodes,
 } from './tree-store.js';
-import { applyBackgroundPromptAddendum } from './agent-utils.js';
+import { applyBackgroundPromptAddendum, trigramSimilarity } from './agent-utils.js';
 
 /**
  * Granularity presets control how aggressively the builder splits entries.
@@ -249,6 +250,8 @@ export async function buildTreeWithLLM(lorebookName, options = {}) {
 /** Default max concurrent LLM calls during build phases. */
 const BUILD_CONCURRENCY = 3;
 
+const NODE_LABEL_FUZZY_THRESHOLD = 0.65;
+
 /**
  * Run an array of async tasks with bounded concurrency.
  * @param {Array<() => Promise>} tasks - Factory functions that return promises
@@ -369,6 +372,7 @@ async function _buildTreeWithLLM(lorebookName, options = {}) {
     progress('Subdividing large nodes…', 65);
     detail_(`Splitting categories with ${gran.maxEntries}+ entries (granularity: ${gran.label})`);
     await subdivideLargeNodes(tree.root, bookData, activeEntries.length);
+    consolidateSiblingNodes(tree.root);
     saveTree(lorebookName, tree);
 
     // PageIndex pattern: generate per-node summaries (parallel with batching)
@@ -485,6 +489,19 @@ Respond with ONLY valid JSON in this exact format:
  * @param {string} response
  * @param {number[]} validUids
  */
+function fuzzyFindNode(label, labelMap) {
+    if (labelMap.has(label)) return labelMap.get(label);
+    let best = null, bestScore = 0;
+    for (const [key, node] of labelMap) {
+        const score = trigramSimilarity(label, key);
+        if (score > bestScore && score >= NODE_LABEL_FUZZY_THRESHOLD) {
+            bestScore = score;
+            best = node;
+        }
+    }
+    return best;
+}
+
 function mergeLLMResponse(tree, response, validUids) {
     try {
         const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -506,7 +523,7 @@ function mergeLLMResponse(tree, response, validUids) {
 
         for (const cat of parsed.categories) {
             const catLabel = (cat.label || 'Unnamed').toLowerCase();
-            const existingNode = labelMap.get(catLabel);
+            const existingNode = fuzzyFindNode(catLabel, labelMap);
             const targetNode = existingNode || createTreeNode(cat.label || 'Unnamed', cat.summary || '');
 
             if (Array.isArray(cat.entries)) {
@@ -523,7 +540,7 @@ function mergeLLMResponse(tree, response, validUids) {
             if (Array.isArray(cat.children)) {
                 for (const sub of cat.children) {
                     const subLabel = (sub.label || 'Unnamed').toLowerCase();
-                    const existingSub = labelMap.get(subLabel);
+                    const existingSub = fuzzyFindNode(subLabel, labelMap);
                     const subNode = existingSub || createTreeNode(sub.label || 'Unnamed', sub.summary || '');
                     if (Array.isArray(sub.entries)) {
                         for (const uid of sub.entries) {
@@ -779,8 +796,9 @@ async function subdivideLargeNodes(node, bookData, totalEntryCount = 0, _depth =
                             for (const sub of parsed.subcategories) {
                                 const subLabel = (sub.label || 'Unnamed').toLowerCase();
                                 // Merge into existing child if label matches
-                                const target = childMap.get(subLabel) || createTreeNode(sub.label || 'Unnamed', '');
-                                const isNew = !childMap.has(subLabel);
+                                const existingChild = fuzzyFindNode(subLabel, childMap);
+                                const target = existingChild || createTreeNode(sub.label || 'Unnamed', '');
+                                const isNew = !existingChild;
 
                                 if (Array.isArray(sub.entries)) {
                                     for (const uid of sub.entries) {

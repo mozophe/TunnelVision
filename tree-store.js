@@ -7,6 +7,7 @@
 import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 import { loadWorldInfo } from '../../../world-info.js';
+import { trigramSimilarity } from './agent-utils.js';
 
 const EXTENSION_NAME = 'tunnelvision';
 const TRACKER_TITLE_PREFIX = /^\[tracker[^\]]*\]/i;
@@ -399,6 +400,59 @@ function deduplicateUidsAcrossTree(node) {
         if (node.entryUids.length !== before) mutated = true;
     }
     return mutated;
+}
+
+export function consolidateSiblingNodes(node, labelThreshold = 0.65, containThreshold = 0.60) {
+    let absorbed = 0;
+
+    for (const child of (node.children || [])) {
+        absorbed += consolidateSiblingNodes(child, labelThreshold, containThreshold);
+    }
+
+    const children = node.children;
+    if (!children || children.length < 2) return absorbed;
+
+    const toAbsorb = new Set();
+    for (let i = 0; i < children.length; i++) {
+        if (toAbsorb.has(i)) continue;
+        for (let j = i + 1; j < children.length; j++) {
+            if (toAbsorb.has(j)) continue;
+
+            const labelSim = trigramSimilarity(
+                children[i].label.toLowerCase(),
+                children[j].label.toLowerCase(),
+            );
+
+            const uidsI = new Set(getAllEntryUids(children[i]));
+            const uidsJ = new Set(getAllEntryUids(children[j]));
+            const smaller = uidsI.size <= uidsJ.size ? uidsI : uidsJ;
+            const larger  = uidsI.size <= uidsJ.size ? uidsJ : uidsI;
+            const containment = smaller.size >= 2
+                ? [...smaller].filter(u => larger.has(u)).length / smaller.size
+                : 0;
+
+            if (labelSim < labelThreshold && containment < containThreshold) continue;
+
+            const wi = uidsI.size >= uidsJ.size ? i : j;
+            const li = wi === i ? j : i;
+
+            for (const uid of children[li].entryUids) {
+                if (!children[wi].entryUids.includes(uid)) {
+                    children[wi].entryUids.push(uid);
+                }
+            }
+            children[wi].children.push(...(children[li].children || []));
+            toAbsorb.add(li);
+            absorbed++;
+        }
+    }
+
+    if (toAbsorb.size > 0) {
+        node.children = children.filter((_, idx) => !toAbsorb.has(idx));
+        absorbed += consolidateSiblingNodes(node, labelThreshold, containThreshold);
+    }
+
+    return absorbed;
 }
 
 function normalizeTree(tree, lorebookName) {
