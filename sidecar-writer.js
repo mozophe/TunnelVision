@@ -261,13 +261,12 @@ function formatRecentOperations(chatId) {
 
 /**
  * Load title+body text from all existing [Summary] entries across the given books.
- * Strips the "[Summary] " prefix from comment and the metadata header from content
- * so the comparison is apples-to-apples against op.title + op.summary.
+ * Returns objects so the dedup loop can convert near-duplicates to updates.
  * @param {string[]} bookNames
- * @returns {Promise<string[]>}
+ * @returns {Promise<Array<{text: string, uid: number, lorebook: string}>>}
  */
 async function loadSummaryTexts(bookNames) {
-    const texts = [];
+    const entries = [];
     for (const bookName of bookNames) {
         const bookData = await loadWorldInfo(bookName);
         if (!bookData?.entries) continue;
@@ -278,10 +277,24 @@ async function loadSummaryTexts(bookNames) {
             const rawContent = e.content || '';
             const bodyStart = rawContent.indexOf('\n\n');
             const body = bodyStart >= 0 ? rawContent.slice(bodyStart + 2) : rawContent;
-            texts.push(`${title} ${body}`.toLowerCase());
+            entries.push({ text: `${title} ${body}`.toLowerCase(), uid: e.uid, lorebook: bookName });
         }
     }
-    return texts;
+    return entries;
+}
+
+/**
+ * Format a summarize op's content in the same structure used by tools/summarize.js.
+ * Used when converting a duplicate summarize op into an update op.
+ * @param {Object} op
+ * @returns {string}
+ */
+function formatSummaryContent(op) {
+    const significance = op.significance || 'moderate';
+    const participants = Array.isArray(op.participants) && op.participants.length > 0
+        ? op.participants.join(', ')
+        : '(unspecified)';
+    return `[Scene Summary — ${significance}]\nParticipants: ${participants}\n\n${(op.summary || '').trim()}`;
 }
 
 /**
@@ -966,12 +979,32 @@ export async function runSidecarWriter(messageId = null) {
                     summaryTexts = await loadSummaryTexts(activeBooks);
                 }
                 const newText = `${op.title || ''} ${op.summary || ''}`.toLowerCase();
-                const isDupe = summaryTexts.some(t => trigramSimilarity(newText, t) >= SUMMARY_DEDUP_THRESHOLD);
+                const isDupe = summaryTexts.some(e => trigramSimilarity(newText, e.text) >= SUMMARY_DEDUP_THRESHOLD);
                 if (isDupe) {
-                    console.log(`[TunnelVision] Sidecar writer: skipping duplicate summary "${op.title}"`);
+                    // Find the best-matching existing summary and update it instead of creating a new one
+                    const bestMatch = summaryTexts.reduce(
+                        (best, e) => {
+                            const score = trigramSimilarity(newText, e.text);
+                            return score > best.score ? { score, entry: e } : best;
+                        },
+                        { score: 0, entry: null },
+                    ).entry;
+
+                    if (bestMatch?.uid != null) {
+                        console.log(`[TunnelVision] Sidecar writer: updating existing summary UID ${bestMatch.uid} instead of creating duplicate "${op.title}"`);
+                        dedupedOps.push({
+                            type: 'update',
+                            lorebook: bestMatch.lorebook,
+                            uid: bestMatch.uid,
+                            content: formatSummaryContent(op),
+                            title: op.title ? `[Summary] ${op.title}` : undefined,
+                        });
+                    } else {
+                        console.log(`[TunnelVision] Sidecar writer: skipping duplicate summary "${op.title}" (no UID to update)`);
+                    }
                     continue;
                 }
-                summaryTexts.push(newText);
+                summaryTexts.push({ text: newText, uid: null, lorebook: op.lorebook });
             }
             dedupedOps.push(op);
         }
