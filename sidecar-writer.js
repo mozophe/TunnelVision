@@ -35,7 +35,8 @@ import { getDefinition as getMergeSplitDef } from './tools/merge-split.js';
 import { logSidecarWrite } from './activity-feed.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 import { applyBackgroundPromptAddendum, buildLanguageDirective, trigramSimilarity } from './agent-utils.js';
-import { DEDUP_SIMILARITY_THRESHOLD } from './constants.js';
+
+const SUMMARY_DEDUP_THRESHOLD = 0.50;
 
 // ─── Turn Snapshots (for undos) ──────────────────────────────────
 
@@ -283,6 +284,29 @@ async function loadSummaryTexts(bookNames) {
     return texts;
 }
 
+/**
+ * Load stripped titles of all existing [Summary] entries, most recent first (by UID).
+ * Used to populate the EXISTING SUMMARIES section in the writer prompt so the LLM
+ * sees the full list even when the tree overview truncates the Summaries node.
+ * @param {string[]} bookNames
+ * @returns {Promise<string[]>}
+ */
+async function loadSummaryTitles(bookNames) {
+    const items = [];
+    for (const bookName of bookNames) {
+        const bookData = await loadWorldInfo(bookName);
+        if (!bookData?.entries) continue;
+        for (const e of Object.values(bookData.entries)) {
+            if (e.disable) continue;
+            if (!(e.comment || '').startsWith('[Summary]')) continue;
+            const title = (e.comment || '').replace(/^\[Summary\]\s*/, '').trim();
+            if (title) items.push({ uid: e.uid ?? 0, title });
+        }
+    }
+    items.sort((a, b) => b.uid - a.uid);
+    return items.slice(0, 50).map(i => i.title);
+}
+
 // ─── Tree Overview (shared format with sidecar-retrieval.js) ─────
 
 /**
@@ -465,7 +489,8 @@ CRITICAL — Updates must be surgical:
 CRITICAL — Housekeeping:
 - Use "forget" sparingly — only when information is definitively wrong or permanently irrelevant
 - Use "reorganize" when entries are clearly in the wrong category
-- Use "summarize" sparingly — 0 per turn is the norm. Never create a summary when an existing Summaries entry already covers the same scene or session. When in doubt, skip it.
+- Use "summarize" sparingly — 0 per turn is the norm. Never create a summary when an existing Summaries entry (listed above under EXISTING SUMMARY ENTRIES) already covers the same scene or session. When in doubt, skip it.
+- You can only see recent messages. NEVER use language like "first meeting", "first encounter", "for the first time", or "initial" — you cannot know if this is genuinely a first occurrence. Use neutral, factual language (e.g. "A meeting between X and Y" not "First meeting between X and Y").
 - Do NOT over-organize — only reorganize when there's a clear structural problem
 
 Response format:
@@ -503,10 +528,13 @@ Return ONLY the JSON object, no explanation.`;
  * @param {string} [recentOps]
  * @returns {string}
  */
-function buildWriterPrompt(treeOverview, recentChat, recentOps = '') {
+function buildWriterPrompt(treeOverview, recentChat, recentOps = '', summaryTitles = []) {
     const writableBooks = getBookListWithDescriptions({ writableOnly: true });
+    const summarySection = summaryTitles.length > 0
+        ? `\nEXISTING SUMMARY ENTRIES (already recorded — do NOT create duplicates):\n${summaryTitles.map(t => `- ${t}`).join('\n')}\n`
+        : '';
     return `CURRENT LOREBOOK STATE:
-${treeOverview}${recentOps}
+${treeOverview}${summarySection}${recentOps}
 
 WRITABLE LOREBOOKS:
 ${writableBooks}
@@ -903,10 +931,11 @@ export async function runSidecarWriter(messageId = null) {
     }
 
     const recentOps = formatRecentOperations(getContext().chatId);
+    const summaryTitles = await loadSummaryTitles(activeBooks);
 
     try {
         // Ask sidecar what to write
-        const prompt = buildWriterPrompt(treeOverview, recentChat, recentOps);
+        const prompt = buildWriterPrompt(treeOverview, recentChat, recentOps, summaryTitles);
         const langDirective = buildLanguageDirective();
         const response = await sidecarGenerate({
             prompt,
@@ -937,7 +966,7 @@ export async function runSidecarWriter(messageId = null) {
                     summaryTexts = await loadSummaryTexts(activeBooks);
                 }
                 const newText = `${op.title || ''} ${op.summary || ''}`.toLowerCase();
-                const isDupe = summaryTexts.some(t => trigramSimilarity(newText, t) >= DEDUP_SIMILARITY_THRESHOLD);
+                const isDupe = summaryTexts.some(t => trigramSimilarity(newText, t) >= SUMMARY_DEDUP_THRESHOLD);
                 if (isDupe) {
                     console.log(`[TunnelVision] Sidecar writer: skipping duplicate summary "${op.title}"`);
                     continue;
