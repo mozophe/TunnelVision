@@ -635,6 +635,21 @@ export function setSelectedLorebook(lorebookName) {
     }
 }
 
+export function migrateSelectedLorebook(activeBooks) {
+    try {
+        const context = getContext();
+        if (!context.chatMetadata) return;           // no active chat
+        if (context.chatMetadata[SELECTED_BOOK_KEY]) return; // chat already chose
+        const legacy = getSettings().selectedLorebook;
+        if (legacy && Array.isArray(activeBooks) && activeBooks.includes(legacy)) {
+            context.chatMetadata[SELECTED_BOOK_KEY] = legacy;
+            context.saveMetadataDebounced?.();
+        }
+    } catch {
+        /* no active chat — skip */
+    }
+}
+
 export function getConnectionProfileId() {
     const settings = getSettings();
     return settings.connectionProfile || null;

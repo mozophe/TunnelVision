@@ -16,6 +16,7 @@ vi.mock('../../../st-context.js', () => ({
 import {
     getSelectedLorebook,
     setSelectedLorebook,
+    migrateSelectedLorebook,
 } from '../tree-store.js';
 
 const SELECTED_BOOK_KEY = 'tunnelvision_selected_book';
@@ -58,5 +59,35 @@ describe('getSelectedLorebook / setSelectedLorebook (chat-scoped)', () => {
         mockChatMetadata = null;
         expect(() => setSelectedLorebook('Book A')).not.toThrow();
         expect(mockSaveMetadataDebounced).not.toHaveBeenCalled();
+    });
+});
+
+describe('migrateSelectedLorebook', () => {
+    it('copies legacy global selection when that book is active', () => {
+        extension_settings.tunnelvision = { selectedLorebook: 'Legacy Book' };
+        migrateSelectedLorebook(['Legacy Book', 'Other Book']);
+        expect(mockChatMetadata[SELECTED_BOOK_KEY]).toBe('Legacy Book');
+        expect(mockSaveMetadataDebounced).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not copy when the legacy book is not active', () => {
+        extension_settings.tunnelvision = { selectedLorebook: 'Legacy Book' };
+        migrateSelectedLorebook(['Other Book']);
+        expect(SELECTED_BOOK_KEY in mockChatMetadata).toBe(false);
+        expect(mockSaveMetadataDebounced).not.toHaveBeenCalled();
+    });
+
+    it('does not overwrite an existing chat selection', () => {
+        mockChatMetadata[SELECTED_BOOK_KEY] = 'Chat Book';
+        extension_settings.tunnelvision = { selectedLorebook: 'Legacy Book' };
+        migrateSelectedLorebook(['Legacy Book', 'Chat Book']);
+        expect(mockChatMetadata[SELECTED_BOOK_KEY]).toBe('Chat Book');
+        expect(mockSaveMetadataDebounced).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op without an active chat', () => {
+        mockChatMetadata = null;
+        extension_settings.tunnelvision = { selectedLorebook: 'Legacy Book' };
+        expect(() => migrateSelectedLorebook(['Legacy Book'])).not.toThrow();
     });
 });
