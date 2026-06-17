@@ -591,29 +591,6 @@ function normalizeTrackerSettings(settings) {
     return mutated;
 }
 
-function normalizeConnectionProfileSetting(settings) {
-    const current = settings.connectionProfile;
-    if (!current || typeof current !== 'string') return false;
-
-    const profiles = getConnectionProfiles();
-    if (profiles.some(profile => profile.id === current)) {
-        return false;
-    }
-
-    const legacyMatch = profiles.find(profile => profile.name === current);
-    if (legacyMatch) {
-        settings.connectionProfile = legacyMatch.id;
-        return true;
-    }
-
-    return false;
-}
-
-function getConnectionProfiles() {
-    const profiles = extension_settings?.connectionManager?.profiles;
-    return Array.isArray(profiles) ? profiles : [];
-}
-
 function resolveEntriesMap(entriesOrBookData) {
     if (!entriesOrBookData || typeof entriesOrBookData !== 'object') return null;
     if (entriesOrBookData.entries && typeof entriesOrBookData.entries === 'object') {
@@ -676,33 +653,6 @@ export function migrateSelectedLorebook(activeBooks) {
     } catch {
         /* no active chat — skip */
     }
-}
-
-export function getConnectionProfileId() {
-    const settings = getSettings();
-    return settings.connectionProfile || null;
-}
-
-export function setConnectionProfileId(profileId) {
-    const settings = getSettings();
-    settings.connectionProfile = profileId || null;
-    saveSettingsDebounced();
-}
-
-export function findConnectionProfile(profileRef = null) {
-    const ref = profileRef ?? getConnectionProfileId();
-    if (!ref) return null;
-
-    const profiles = getConnectionProfiles();
-    return profiles.find(profile => profile.id === ref || profile.name === ref) || null;
-}
-
-export function getConnectionProfileName(profileRef = null) {
-    return findConnectionProfile(profileRef)?.name || null;
-}
-
-export function listConnectionProfiles() {
-    return [...getConnectionProfiles()];
 }
 
 // ─── Per-Lorebook Permissions ────────────────────────────────────
