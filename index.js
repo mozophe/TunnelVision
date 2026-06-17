@@ -33,7 +33,7 @@ import { initCommands } from './commands.js';
 import { initAutoSummary } from './auto-summary.js';
 import { initPostTurnProcessor } from './post-turn-processor.js';
 import { runSidecarRetrieval } from './sidecar-retrieval.js';
-import { runSidecarWriter, revertMessageSnapshots, revertInvalidSnapshots } from './sidecar-writer.js';
+import { runSidecarWriter, revertMessageSnapshots, revertInvalidSnapshots, hydrateSnapshots } from './sidecar-writer.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
@@ -199,6 +199,9 @@ async function init() {
 
 async function onChatChanged() {
     autoDetectLorebooks();
+    // Rehydrate sidecar snapshots from this chat's metadata so revert-on-deletion
+    // survives a page reload / chat switch.
+    hydrateSnapshots();
     // One-time migration of the legacy global selection into this chat's metadata.
     // Active-book guard ensures a stale cross-character book is never copied.
     migrateSelectedLorebook(getActiveTunnelVisionBooks());

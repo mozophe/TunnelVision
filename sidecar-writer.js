@@ -48,6 +48,40 @@ const SUMMARY_DEDUP_THRESHOLD = 0.50;
  */
 const turnSnapshots = new Map();
 
+/** chat_metadata key under which snapshots persist across reloads. */
+const SNAPSHOTS_METADATA_KEY = 'tunnelvision_snapshots';
+/** Max snapshots retained (bounds chat-file bloat; constant regardless of chat length). */
+const MAX_SNAPSHOTS = 50;
+
+/**
+ * Persist the in-memory snapshot map into chat_metadata so revert-on-deletion
+ * survives a page reload. Stored as a plain object keyed by "msgId:hash".
+ */
+function persistSnapshots() {
+    try {
+        const context = getContext();
+        if (!context.chatMetadata) return;
+        context.chatMetadata[SNAPSHOTS_METADATA_KEY] = Object.fromEntries(turnSnapshots);
+        context.saveMetadataDebounced?.();
+    } catch { /* no active chat */ }
+}
+
+/**
+ * Rehydrate the snapshot map from chat_metadata. Call on init and on
+ * CHAT_CHANGED so reverts work after a reload or chat switch.
+ */
+export function hydrateSnapshots() {
+    try {
+        turnSnapshots.clear();
+        const data = getContext().chatMetadata?.[SNAPSHOTS_METADATA_KEY];
+        if (data && typeof data === 'object') {
+            for (const [key, snap] of Object.entries(data)) {
+                turnSnapshots.set(key, snap);
+            }
+        }
+    } catch { /* no active chat */ }
+}
+
 /**
  * Take a snapshot of the state of entries about to be modified.
  * @param {string} snapshotKey
@@ -89,12 +123,14 @@ async function takeSnapshots(snapshotKey, ops) {
     }
 
     turnSnapshots.set(snapshotKey, snapshots);
-    
-    // Prune old snapshots (keep last 50)
-    if (turnSnapshots.size > 50) {
+
+    // Prune old snapshots (keep last MAX_SNAPSHOTS)
+    while (turnSnapshots.size > MAX_SNAPSHOTS) {
         const firstKey = turnSnapshots.keys().next().value;
         turnSnapshots.delete(firstKey);
     }
+
+    persistSnapshots();
 }
 
 /**
@@ -180,6 +216,7 @@ export async function revertMessageSnapshots(msgId, msgHash) {
     }
 
     turnSnapshots.delete(key);
+    persistSnapshots();
 
     // Surface the revert in the activity feed — one summary item per message
     logSnapshotRevert({ deletedCount, restoredCount, treeCount, books: [...touchedBooks] });
@@ -914,6 +951,11 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
             results.push(`ERROR [${op.type}]: ${err.message}`);
         }
     }
+
+    // Re-persist: createdUids were appended to the snapshot during this loop,
+    // after takeSnapshots' initial persist. Without this, created entries
+    // wouldn't be deleted on a revert after a reload.
+    persistSnapshots();
 
     return { succeeded, failed, results };
 }
