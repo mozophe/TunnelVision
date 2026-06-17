@@ -560,10 +560,13 @@ function renderAllItems() {
         return;
     }
 
-    // Sort: active items first (by recency), constant entries pushed to bottom
+    // Sort: newest first, constant entries pushed to bottom.
+    // Use an explicit timestamp tiebreaker rather than relying on Array.sort
+    // stability — non-stable engines reorder large arrays when the comparator
+    // returns 0 for every pair, which flipped the All tab's order.
     const sorted = [...filtered].sort((a, b) => {
         if (a.constant !== b.constant) return a.constant ? 1 : -1;
-        return 0; // preserve insertion order within each group
+        return (b.timestamp || 0) - (a.timestamp || 0);
     });
 
     panelBody.replaceChildren();
