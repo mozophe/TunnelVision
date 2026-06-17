@@ -32,7 +32,7 @@ import { getDefinition as getSummarizeDef } from './tools/summarize.js';
 import { getDefinition as getForgetDef } from './tools/forget.js';
 import { getDefinition as getReorganizeDef } from './tools/reorganize.js';
 import { getDefinition as getMergeSplitDef } from './tools/merge-split.js';
-import { logSidecarWrite } from './activity-feed.js';
+import { logSidecarWrite, logSnapshotRevert } from './activity-feed.js';
 import { saveSettingsDebounced } from '../../../../script.js';
 import { applyBackgroundPromptAddendum, buildLanguageDirective, trigramSimilarity } from './agent-utils.js';
 
@@ -108,6 +108,10 @@ export async function revertMessageSnapshots(msgId, msgHash) {
 
     console.log(`[TunnelVision] Reverting sidecar modifications for message ${msgId}...`);
 
+    let deletedCount = 0;
+    let restoredCount = 0;
+    const touchedBooks = new Set();
+
     // 1. Delete created entries
     for (const item of snapshots.createdUids) {
         const { bookName, uid } = item;
@@ -124,6 +128,9 @@ export async function revertMessageSnapshots(msgId, msgHash) {
                 // Force UI update so it vanishes from the native Lorebook instantly
                 if (typeof window.renderWorldInfoList === 'function') window.renderWorldInfoList();
                 if (typeof window.renderWorldInfo === 'function') window.renderWorldInfo();
+
+                deletedCount++;
+                touchedBooks.add(bookName);
             }
         }
     }
@@ -148,6 +155,8 @@ export async function revertMessageSnapshots(msgId, msgHash) {
                 }
                 
                 booksToSave.add(bookName);
+                restoredCount++;
+                touchedBooks.add(bookName);
             }
         }
     }
@@ -158,16 +167,23 @@ export async function revertMessageSnapshots(msgId, msgHash) {
     }
 
     // 3. Restore tree states
+    let treeCount = 0;
     for (const [bookName, originalRoot] of Object.entries(snapshots.treeState)) {
         const tree = getTree(bookName);
         if (tree) {
             console.debug(`   - Restoring tree structure for "${bookName}"`);
             tree.root = originalRoot;
             saveTree(bookName, tree);
+            treeCount++;
+            touchedBooks.add(bookName);
         }
     }
 
     turnSnapshots.delete(key);
+
+    // Surface the revert in the activity feed — one summary item per message
+    logSnapshotRevert({ deletedCount, restoredCount, treeCount, books: [...touchedBooks] });
+
     return true;
 }
 

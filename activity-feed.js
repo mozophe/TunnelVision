@@ -1026,6 +1026,36 @@ export function logConditionalEvaluations(evaluations, conditionalEntries) {
     addFeedItems(items);
 }
 
+/**
+ * Log a snapshot revert (message deletion / swipe) to the activity feed.
+ * One summary item per reverted message.
+ * @param {{ deletedCount?: number, restoredCount?: number, treeCount?: number, books?: string[] }} info
+ */
+export function logSnapshotRevert({ deletedCount = 0, restoredCount = 0, treeCount = 0, books = [] } = {}) {
+    if (deletedCount === 0 && restoredCount === 0 && treeCount === 0) return;
+
+    const parts = [];
+    if (deletedCount > 0) parts.push(`${deletedCount} created entr${deletedCount === 1 ? 'y' : 'ies'} removed`);
+    if (restoredCount > 0) parts.push(`${restoredCount} entr${restoredCount === 1 ? 'y' : 'ies'} restored`);
+    if (treeCount > 0) parts.push(`${treeCount} tree${treeCount === 1 ? '' : 's'} restored`);
+
+    const uniqueBooks = [...new Set((books || []).filter(Boolean))];
+    let suffix = '';
+    if (uniqueBooks.length === 1) suffix = ` in ${uniqueBooks[0]}`;
+    else if (uniqueBooks.length > 1) suffix = ` across ${uniqueBooks.length} books`;
+
+    addFeedItems([{
+        id: nextId++,
+        type: 'tool',
+        icon: 'fa-rotate-left',
+        verb: 'Reverted',
+        color: '#e17055',
+        summary: (parts.join(', ') || 'memory reverted') + suffix,
+        timestamp: Date.now(),
+        isSidecar: true,
+    }]);
+}
+
 // ── Entry / Retrieved Entry Helpers ──
 
 
