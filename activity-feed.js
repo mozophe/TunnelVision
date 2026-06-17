@@ -561,15 +561,15 @@ function renderAllItems() {
     }
 
     // Sort: newest first, constant entries pushed to bottom.
-    // Use an explicit timestamp tiebreaker rather than relying on Array.sort
-    // stability — non-stable engines reorder large arrays when the comparator
-    // returns 0 for every pair, which flipped the All tab's order.
+    // Coerce `constant` to a boolean: entry items set `constant: false`, while
+    // tool items leave it `undefined`. Comparing the raw values (false !== undefined)
+    // made the comparator non-antisymmetric, so Array.sort produced arbitrary order
+    // (entries floated above newer tool items regardless of timestamp).
     const sorted = [...filtered].sort((a, b) => {
-        if (a.constant !== b.constant) return a.constant ? 1 : -1;
+        const ac = !!a.constant, bc = !!b.constant;
+        if (ac !== bc) return ac ? 1 : -1;
         return (b.timestamp || 0) - (a.timestamp || 0);
     });
-
-    console.log('[TV-FEED-SORT v2]', tab, 'top3:', sorted.slice(0, 3).map(i => `${i.verb || i.title}@${i.timestamp}`));
 
     panelBody.replaceChildren();
     for (const item of sorted) {
