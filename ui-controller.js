@@ -55,16 +55,13 @@ function selectCurrentLorebook(bookName) {
 }
 
 function syncSelectedLorebook() {
-    if (currentLorebook && world_names?.includes(currentLorebook)) {
+    // Chat-stored selection is authoritative — do not keep a stale currentLorebook
+    // across a chat switch even if the old book still exists in world_names.
+    const stored = getSelectedLorebook();
+    if (stored && world_names?.includes(stored)) {
+        currentLorebook = stored;
         return;
     }
-
-    const preferredLorebook = getSelectedLorebook();
-    if (preferredLorebook && world_names?.includes(preferredLorebook)) {
-        currentLorebook = preferredLorebook;
-        return;
-    }
-
     currentLorebook = null;
 }
 

@@ -22,7 +22,7 @@ import { eventSource, event_types, extension_prompt_types, extension_prompt_role
 import { getContext } from '../../../st-context.js';
 import { ToolManager } from '../../../tool-calling.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
-import { getSettings, isLorebookEnabled, setLorebookEnabled, getTree, removeEntryFromTree, saveTree, isNativeInjectionBook } from './tree-store.js';
+import { getSettings, isLorebookEnabled, setLorebookEnabled, getTree, removeEntryFromTree, saveTree, isNativeInjectionBook, migrateSelectedLorebook } from './tree-store.js';
 import { preflightToolRuntimeState, registerTools, getActiveTunnelVisionBooks } from './tool-registry.js';
 import { resetSearchLoopTracker, resetSelectiveRetrievalTracker } from './tools/search.js';
 import { buildNotebookPrompt, resetNotebookWriteGuard } from './tools/notebook.js';
@@ -199,6 +199,9 @@ async function init() {
 
 async function onChatChanged() {
     autoDetectLorebooks();
+    // One-time migration of the legacy global selection into this chat's metadata.
+    // Active-book guard ensures a stale cross-character book is never copied.
+    migrateSelectedLorebook(getActiveTunnelVisionBooks());
     // Catch slash command deletions (like /cut) which might not emit MESSAGE_DELETED
     await cleanInvalidSidecarMemories();
     refreshUI();

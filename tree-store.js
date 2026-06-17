@@ -6,6 +6,7 @@
 
 import { extension_settings } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
+import { getContext } from '../../../st-context.js';
 import { loadWorldInfo } from '../../../world-info.js';
 import { trigramSimilarity } from './agent-utils.js';
 
@@ -272,7 +273,7 @@ export const SETTING_DEFAULTS = {
     globalEnabled: true,
     trees: {},
     enabledLorebooks: {},
-    selectedLorebook: null,
+    selectedLorebook: null, // DEPRECATED: migration source only; selection now lives in chat_metadata
     bookDescriptions: {},
     connectionProfile: null,
     sidecarTemperature: 0.2,
@@ -609,15 +610,44 @@ function storeTrackerSet(bookName, trackerSet) {
     }
 }
 
+const SELECTED_BOOK_KEY = 'tunnelvision_selected_book';
+
 export function getSelectedLorebook() {
-    const settings = getSettings();
-    return settings.selectedLorebook || null;
+    try {
+        return getContext().chatMetadata?.[SELECTED_BOOK_KEY] || null;
+    } catch {
+        return null; // no active chat
+    }
 }
 
 export function setSelectedLorebook(lorebookName) {
-    const settings = getSettings();
-    settings.selectedLorebook = lorebookName || null;
-    saveSettingsDebounced();
+    try {
+        const context = getContext();
+        if (!context.chatMetadata) return; // no active chat
+        if (lorebookName) {
+            context.chatMetadata[SELECTED_BOOK_KEY] = lorebookName;
+        } else {
+            delete context.chatMetadata[SELECTED_BOOK_KEY];
+        }
+        context.saveMetadataDebounced?.();
+    } catch {
+        /* no active chat — no-op */
+    }
+}
+
+export function migrateSelectedLorebook(activeBooks) {
+    try {
+        const context = getContext();
+        if (!context.chatMetadata) return;           // no active chat
+        if (context.chatMetadata[SELECTED_BOOK_KEY]) return; // chat already chose
+        const legacy = getSettings().selectedLorebook;
+        if (legacy && Array.isArray(activeBooks) && activeBooks.includes(legacy)) {
+            context.chatMetadata[SELECTED_BOOK_KEY] = legacy;
+            context.saveMetadataDebounced?.();
+        }
+    } catch {
+        /* no active chat — skip */
+    }
 }
 
 export function getConnectionProfileId() {
