@@ -959,7 +959,7 @@ export function logSidecarWrite(opType, { lorebook = '', title = '', uid = null,
  * @param {number} [details.charCount] - Approximate character count injected
  * @param {string} [details.reasoning]
  */
-export function logSidecarRetrieval({ nodeIds = [], nodeLabels = [], charCount = 0, reasoning = '' } = {}) {
+export function logSidecarRetrieval({ nodeIds = [], nodeLabels = [], entries = [], charCount = 0, reasoning = '' } = {}) {
     const labels = nodeLabels.length > 0 ? nodeLabels : nodeIds;
     let summary;
     if (labels.length === 1) {
@@ -971,18 +971,33 @@ export function logSidecarRetrieval({ nodeIds = [], nodeLabels = [], charCount =
     }
 
     const modelLabel = getSidecarModelLabel();
-    const items = [{
+    const timestamp = Date.now();
+    const items = [];
+
+    // One Entry row per injected memory (parity with TunnelVision_Search),
+    // so retrieved nodes are individually browsable in the Entries tab.
+    for (const entry of entries) {
+        items.push(createEntryFeedItem({
+            source: 'tunnelvision',
+            lorebook: entry.lorebook || '',
+            uid: entry.uid ?? null,
+            title: entry.title || `UID ${entry.uid ?? '?'}`,
+            timestamp,
+        }));
+    }
+
+    items.push({
         id: nextId++,
         type: 'tool',
         icon: 'fa-satellite-dish',
         verb: 'Sidecar Retrieved',
         color: '#00b894',
         summary,
-        timestamp: Date.now(),
+        timestamp,
         isSidecar: true,
         sidecarModel: modelLabel,
         reasoning,
-    }];
+    });
 
     addFeedItems(items);
 }

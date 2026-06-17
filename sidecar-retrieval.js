@@ -244,10 +244,11 @@ function buildConditionalSection(conditionalEntries) {
 /**
  * Resolve node IDs to entry content across all active lorebooks.
  * @param {string[]} nodeIds
- * @returns {Promise<string>}
+ * @returns {Promise<{ text: string, entries: Array<{ lorebook: string, uid: number, title: string }> }>}
  */
 async function resolveNodeContent(nodeIds) {
     const results = [];
+    const entries = [];
     const seenEntries = new Set();
 
     for (const nodeId of nodeIds) {
@@ -275,11 +276,12 @@ async function resolveNodeContent(nodeIds) {
 
                 const title = entry.comment || entry.key?.[0] || `Entry #${uid}`;
                 results.push(`[${bookName} | ${title}]\n${entry.content}`);
+                entries.push({ lorebook: bookName, uid: Number(uid), title });
             }
         }
     }
 
-    return results.join('\n\n');
+    return { text: results.join('\n\n'), entries };
 }
 
 /**
@@ -501,9 +503,11 @@ export async function runSidecarRetrieval() {
 
         // Resolve node content (tree-based retrieval)
         let injectionParts = [];
+        let retrievedEntries = [];
 
         if (nodeIds.length > 0) {
-            const nodeContent = await resolveNodeContent(nodeIds);
+            const { text: nodeContent, entries: nodeEntries } = await resolveNodeContent(nodeIds);
+            retrievedEntries = nodeEntries;
             if (nodeContent.trim()) {
                 injectionParts.push(nodeContent);
             }
@@ -550,7 +554,7 @@ export async function runSidecarRetrieval() {
 
         const _modelLabel = getSidecarModelLabel() || 'unknown';
         console.log(`[TunnelVision] Sidecar auto-retrieval [${_modelLabel}]: injected ${nodeIds.length} node(s) + ${conditionalEvaluations.filter(e => e.accepted).length} conditional(s) (~${capped.length} chars)`);
-        logSidecarRetrieval({ nodeIds, nodeLabels, charCount: capped.length, reasoning });
+        logSidecarRetrieval({ nodeIds, nodeLabels, entries: retrievedEntries, charCount: capped.length, reasoning });
 
         // Detailed console output for sidecar transparency
         console.groupCollapsed(`[TunnelVision] Sidecar retrieval details (${_modelLabel})`);
