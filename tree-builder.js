@@ -12,7 +12,6 @@
 import { generateRaw as _generateRaw } from '../../../../script.js';
 import { getContext } from '../../../st-context.js';
 import { loadWorldInfo } from '../../../world-info.js';
-import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { isSidecarConfigured, sidecarGenerate } from './llm-sidecar.js';
 import { createEntry, findEntryByUid } from './entry-manager.js';
 import {
@@ -92,44 +91,15 @@ async function generateRaw(opts) {
 }
 
 /**
- * Switch to the configured TV connection profile (if any), run the callback,
- * then restore the original profile. Falls back gracefully if Connection Manager
- * isn't installed or the /profile command isn't available.
- * @param {() => Promise<T>} fn Async function to run with the profile active
+ * Run a callback against TV's LLM. If the sidecar is configured, the callback makes
+ * direct API calls; otherwise it runs against ST's current active API (generateRaw).
+ * No connection-profile switching — TV no longer owns an ST profile.
+ * @param {() => Promise<T>} fn
  * @returns {Promise<T>}
  * @template T
  */
-async function withConnectionProfile(fn) {
-    // Sidecar makes direct API calls — no need to switch ST profiles
-    if (isSidecarConfigured()) return fn();
-
-    const settings = getSettings();
-    const targetProfile = settings.connectionProfile;
-    if (!targetProfile) {
-        return fn();
-    }
-
-    const profileCmd = SlashCommandParser?.commands?.['profile'];
-    if (!profileCmd) {
-        console.warn('[TunnelVision] /profile command not available (Connection Manager not loaded). Using current API.');
-        return fn();
-    }
-
-    // Capture the current profile name to restore later
-    const originalProfile = await profileCmd.callback({}, '');
-
-    // Skip switching if already on the target profile
-    if (originalProfile === targetProfile) {
-        return fn();
-    }
-
-    try {
-        console.log(`[TunnelVision] Switching to connection profile: "${targetProfile}"`);
-        await profileCmd.callback({ await: 'true', timeout: '5000' }, targetProfile);
-        return await fn();
-    } finally {
-        await profileCmd.callback({ await: 'true', timeout: '5000' }, originalProfile || '<None>');
-    }
+async function withSidecarOrCurrentApi(fn) {
+    return fn();
 }
 
 /**
@@ -244,7 +214,7 @@ export async function buildTreeFromMetadata(lorebookName, options = {}) {
  * @returns {Promise<import('./tree-store.js').TreeIndex>}
  */
 export async function buildTreeWithLLM(lorebookName, options = {}) {
-    return withConnectionProfile(() => _buildTreeWithLLM(lorebookName, options));
+    return withSidecarOrCurrentApi(() => _buildTreeWithLLM(lorebookName, options));
 }
 
 /** Default max concurrent LLM calls during build phases. */
@@ -612,7 +582,7 @@ function mergeLLMResponse(tree, response, validUids) {
  */
 export async function generateSummariesForTree(node, lorebookName, _isRoot = true) {
     if (_isRoot) {
-        return withConnectionProfile(() => _generateSummariesForTree(node, lorebookName, true, null));
+        return withSidecarOrCurrentApi(() => _generateSummariesForTree(node, lorebookName, true, null));
     }
     return _generateSummariesForTree(node, lorebookName, _isRoot, null);
 }
@@ -958,7 +928,7 @@ async function parseLLMTreeResponse(lorebookName, response, entryUids) {
  * @returns {Promise<{created: number, errors: number}>}
  */
 export async function ingestChatMessages(lorebookName, options) {
-    return withConnectionProfile(() => _ingestChatMessages(lorebookName, options));
+    return withSidecarOrCurrentApi(() => _ingestChatMessages(lorebookName, options));
 }
 
 async function _ingestChatMessages(lorebookName, { from, to, progress, detail }) {
