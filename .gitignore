@@ -1,2 +1,5 @@
 CHANGELOG.md
 .playwright-mcp/
+node_modules/
+package-lock.json
+memory/
