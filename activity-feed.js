@@ -569,6 +569,8 @@ function renderAllItems() {
         return (b.timestamp || 0) - (a.timestamp || 0);
     });
 
+    console.log('[TV-FEED-SORT v2]', tab, 'top3:', sorted.slice(0, 3).map(i => `${i.verb || i.title}@${i.timestamp}`));
+
     panelBody.replaceChildren();
     for (const item of sorted) {
         panelBody.appendChild(buildItemElement(item));
