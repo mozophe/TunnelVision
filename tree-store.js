@@ -275,9 +275,6 @@ export const SETTING_DEFAULTS = {
     enabledLorebooks: {},
     selectedLorebook: null, // DEPRECATED: migration source only; selection now lives in chat_metadata
     bookDescriptions: {},
-    connectionProfile: null,
-    sidecarTemperature: 0.2,
-    sidecarMaxTokens: 8192,
     disabledTools: {},
     searchMode: 'traversal',
     collapsedDepth: 2,
@@ -312,6 +309,24 @@ export const SETTING_DEFAULTS = {
     backgroundPromptAddendum: '',
     confirmTools: {},
     toolPromptOverrides: {},
+    // Sidecar LLM — self-contained direct-API config (issue #29: own key, no allowKeysExposure)
+    sidecarProfile: {
+        enabled: false,
+        endpoint: '',       // e.g. https://api.openai.com/v1
+        apiKey: '',         // plaintext; only this key is at risk, not all ST keys
+        model: '',
+        format: 'openai',   // 'openai' | 'anthropic' | 'google'
+        maxTokens: 1000,
+        temperature: 0.3,
+    },
+    // Embedding sidecar — separate endpoint for vector dedup / similarity
+    embeddingProfile: {
+        enabled: false,
+        endpoint: '',
+        apiKey: '',         // may be empty for local endpoints
+        model: '',
+        format: 'openai',   // 'openai' | 'google' | 'gemini'
+    },
     // Sidecar auto-retrieval (pre-gen)
     sidecarAutoRetrieval: false,
     sidecarContextMessages: 10,
@@ -366,8 +381,21 @@ function ensureSettings() {
         didMutate = true;
     }
 
-    if (normalizeConnectionProfileSetting(s)) {
+    // Migration (issue #29): old connectionProfile-based sidecar is gone. Drop the
+    // stale setting and tell the user once to re-enter their key in the new fields.
+    if (Object.prototype.hasOwnProperty.call(s, 'connectionProfile')) {
+        delete s.connectionProfile;
         didMutate = true;
+        try {
+            if (!localStorage.getItem('tv_sidecar_migration_notified')) {
+                localStorage.setItem('tv_sidecar_migration_notified', '1');
+                toastr?.info(
+                    'TunnelVision sidecar now uses its own API key — re-enter it under TunnelVision settings → Sidecar LLM.',
+                    'TunnelVision',
+                    { timeOut: 12000 },
+                );
+            }
+        } catch { /* localStorage/toastr may be unavailable */ }
     }
 
     for (const [bookName, tree] of Object.entries(s.trees || {})) {
@@ -563,29 +591,6 @@ function normalizeTrackerSettings(settings) {
     return mutated;
 }
 
-function normalizeConnectionProfileSetting(settings) {
-    const current = settings.connectionProfile;
-    if (!current || typeof current !== 'string') return false;
-
-    const profiles = getConnectionProfiles();
-    if (profiles.some(profile => profile.id === current)) {
-        return false;
-    }
-
-    const legacyMatch = profiles.find(profile => profile.name === current);
-    if (legacyMatch) {
-        settings.connectionProfile = legacyMatch.id;
-        return true;
-    }
-
-    return false;
-}
-
-function getConnectionProfiles() {
-    const profiles = extension_settings?.connectionManager?.profiles;
-    return Array.isArray(profiles) ? profiles : [];
-}
-
 function resolveEntriesMap(entriesOrBookData) {
     if (!entriesOrBookData || typeof entriesOrBookData !== 'object') return null;
     if (entriesOrBookData.entries && typeof entriesOrBookData.entries === 'object') {
@@ -648,33 +653,6 @@ export function migrateSelectedLorebook(activeBooks) {
     } catch {
         /* no active chat — skip */
     }
-}
-
-export function getConnectionProfileId() {
-    const settings = getSettings();
-    return settings.connectionProfile || null;
-}
-
-export function setConnectionProfileId(profileId) {
-    const settings = getSettings();
-    settings.connectionProfile = profileId || null;
-    saveSettingsDebounced();
-}
-
-export function findConnectionProfile(profileRef = null) {
-    const ref = profileRef ?? getConnectionProfileId();
-    if (!ref) return null;
-
-    const profiles = getConnectionProfiles();
-    return profiles.find(profile => profile.id === ref || profile.name === ref) || null;
-}
-
-export function getConnectionProfileName(profileRef = null) {
-    return findConnectionProfile(profileRef)?.name || null;
-}
-
-export function listConnectionProfiles() {
-    return [...getConnectionProfiles()];
 }
 
 // ─── Per-Lorebook Permissions ────────────────────────────────────
