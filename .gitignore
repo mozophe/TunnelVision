@@ -3,3 +3,6 @@ CHANGELOG.md
 node_modules/
 package-lock.json
 memory/
+docs/superpowers/
+.claude/
+CLAUDE.md

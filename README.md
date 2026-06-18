@@ -11,6 +11,70 @@
 
 ---
 
+> ⚠️ **This is a fork** of [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision). The section below lists everything this fork changes. For the full original docs, keep scrolling. 👇
+
+## 🆕 What This Fork Changes
+
+A quick-read summary of every change this fork adds on top of upstream:
+
+| Area | What changed |
+|------|--------------|
+| 🔐 **Sidecar API config** | Sidecar + embedding LLMs use their own pasted API key/endpoint — no more risky `allowKeysExposure` in ST's `config.yaml` |
+| 📒 **Per-chat lorebooks** | Lorebook selection is stored per-chat, not globally — no more leaking across characters/chats |
+| ↩️ **Undo & cleanup** | Sidecar writes are snapshotted and auto-revert/clean up when you edit, delete, or swipe messages |
+| 📊 **Activity feed** | Newest-first ordering, per-node retrieval rows, snapshot-revert logging |
+| 🧠 **Dedup & summaries** | Duplicate summaries update instead of skip; hardened prompts; fewer spam/root-dump entries |
+| 🏷️ **Native keywords** | Tracking metadata migrated to native ST keywords (`tv_tracker`) for better UI/slash-command sync |
+
+<details>
+<summary><b>📖 Click for the detailed breakdown</b></summary>
+
+### 🔐 Self-Contained Sidecar API Config (no `allowKeysExposure`)
+The background **sidecar LLM** (writes summaries/memories) and the **embedding**
+engine now carry their own API config instead of reading SillyTavern's secrets
+store. Previously the sidecar needed `allowKeysExposure: true` in ST's `config.yaml`
+— which exposes *every* stored key to any frontend code. Now you paste a dedicated
+endpoint + key directly into TunnelVision:
+- Two independent profiles: **Sidecar LLM** (generation) and **Embedding**
+- Per-profile endpoint, API key, model, and format (`openai` / `anthropic` / `google`)
+- **Test Connection** button for each
+- Sidecar sampler controls (default temp `0.3`, max tokens `1000`)
+- Blast radius limited to the keys you paste into TunnelVision, not all ST keys
+
+### 📒 Per-Chat Lorebook Selection
+Lorebook selection is stored **per chat** (`chat_metadata`) instead of one global
+setting, so it travels with each chat and no longer leaks across characters/chats.
+Legacy global selections migrate automatically.
+
+### ↩️ Resilient Undo & Cleanup
+Every sidecar write is captured as a **per-turn snapshot** persisted to chat
+metadata. When you edit, delete, or swipe a message, TunnelVision keeps the
+lorebook consistent with the visible chat:
+- **Snapshot revert** — updates/edits the sidecar made to *existing* entries roll
+  back to their prior state.
+- **Auto-cleanup** — entries the sidecar *created* for a now-deleted message are
+  removed; lorebook + tree entries restore on chat deletion.
+Snapshots survive page reload / chat switch, and reverts log to the Activity Feed.
+
+### 📊 Activity Feed Improvements
+- Deterministic **newest-first** ordering
+- Per-node entry rows for sidecar retrieval (see exactly which entries were pulled)
+- Snapshot reverts shown in the feed
+
+### 🧠 Better Dedup & Summary Quality
+- Duplicate summary detection now **updates** the existing entry instead of skipping
+- Node consolidation + fuzzy matching for category nodes during tree build
+- Hardened sidecar summary prompts + dedup threshold; fixes for summary spam and
+  entries landing in the tree root
+
+### 🏷️ Native ST Keyword Tracking
+Tracking metadata migrated to native SillyTavern keywords (`tv_tracker`), improving
+sync with ST's native UI and slash-command deletion.
+
+</details>
+
+---
+
 ### 💡 The Core Thesis
 
 > **When an AI has to make the active effort to retrieve information, to decide what it needs, go find it, and bring it back, it uses that information better.**
