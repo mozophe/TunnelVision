@@ -51,7 +51,7 @@ const turnSnapshots = new Map();
 /** chat_metadata key under which snapshots persist across reloads. */
 const SNAPSHOTS_METADATA_KEY = 'tunnelvision_snapshots';
 /** Max snapshots retained (bounds chat-file bloat; constant regardless of chat length). */
-const MAX_SNAPSHOTS = 50;
+const MAX_SNAPSHOTS = 20;
 
 /**
  * Persist the in-memory snapshot map into chat_metadata so revert-on-deletion
