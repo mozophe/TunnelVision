@@ -29,12 +29,23 @@ export function resetCircuitBreaker() {
 
 function _recordFailure() {
     _failureCount += 1;
-    if (_failureCount >= BREAKER_THRESHOLD) _breakerOpen = true;
+    if (_failureCount >= BREAKER_THRESHOLD) {
+        _breakerOpen = true;
+        console.warn(`[TunnelVision] Sidecar circuit breaker OPEN after ${_failureCount} consecutive failures — sidecar disabled until reset (reload or successful connectivity test).`);
+    } else {
+        console.warn(`[TunnelVision] Sidecar failure ${_failureCount}/${BREAKER_THRESHOLD} (breaker opens at ${BREAKER_THRESHOLD}).`);
+    }
 }
 
 function _recordSuccess() {
+    if (_failureCount > 0) console.debug(`[TunnelVision] Sidecar success — failure count reset from ${_failureCount}.`);
     _failureCount = 0;
     _breakerOpen = false;
+}
+
+/** True when the circuit breaker has tripped. Distinguishes "broken" from "unconfigured". */
+export function isCircuitOpen() {
+    return _breakerOpen;
 }
 
 // ─── Config Resolution ──────────────────────────────────────────────
@@ -265,6 +276,9 @@ async function _embedGoogle({ endpoint, apiKey, model, texts }) {
 export async function testSidecarConnectivity() {
     const config = getSidecarConfig();
     if (!config) return { ok: false, message: 'No sidecar configuration to test.', latencyMs: 0 };
+    // An explicit user-run test is the reset point for the breaker — otherwise a tripped
+    // breaker short-circuits sidecarGenerate and the test can never report success.
+    resetCircuitBreaker();
     const start = Date.now();
     try {
         const text = await sidecarGenerate({ prompt: 'Reply with the single word: OK' });

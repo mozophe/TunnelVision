@@ -25,7 +25,7 @@ import {
 } from './tree-store.js';
 import { getReadableBooks } from './tool-registry.js';
 import { hasEvaluableConditions, separateConditions, mapSelectiveLogic, describeSelectiveLogic, CONDITION_DESCRIPTIONS, CONDITION_LABELS, rollKeywordProbability, formatCondition } from './conditions.js';
-import { isSidecarConfigured, sidecarGenerate, getSidecarModelLabel } from './llm-sidecar.js';
+import { isSidecarConfigured, isCircuitOpen, sidecarGenerate, getSidecarModelLabel } from './llm-sidecar.js';
 import { logSidecarRetrieval, logConditionalEvaluations, setSidecarActive } from './activity-feed.js';
 import { getKeywordTriggeredUids } from './index.js';
 import { applyBackgroundPromptAddendum, buildLanguageDirective } from './agent-utils.js';
@@ -443,20 +443,31 @@ async function resolveConditionalContent(evaluations, conditionalEntries) {
 export async function runSidecarRetrieval() {
     const settings = getSettings();
 
-    // Guard: must be enabled and sidecar must be configured
-    if (!settings.sidecarAutoRetrieval) return;
+    // Guard: must be enabled and sidecar must be configured.
+    // Every skip path logs a distinct reason — "sidecar didn't fire" is otherwise invisible.
+    if (!settings.sidecarAutoRetrieval) {
+        console.debug('[TunnelVision] Sidecar retrieval SKIP: setting sidecarAutoRetrieval is off');
+        return;
+    }
+    if (isCircuitOpen()) {
+        console.warn('[TunnelVision] Sidecar retrieval SKIP: circuit breaker is OPEN (3+ consecutive failures). Run the connectivity test or reload to reset.');
+        return;
+    }
     if (!isSidecarConfigured()) {
-        console.debug('[TunnelVision] Sidecar auto-retrieval enabled but no sidecar configured — skipping');
+        console.warn('[TunnelVision] Sidecar retrieval SKIP: no sidecar profile configured (endpoint/apiKey missing or profile disabled)');
         return;
     }
 
     const activeBooks = getReadableBooks();
-    if (activeBooks.length === 0) return;
+    if (activeBooks.length === 0) {
+        console.warn('[TunnelVision] Sidecar retrieval SKIP: no readable lorebooks active');
+        return;
+    }
 
     // Build tree overview
     const treeOverview = buildSidecarTreeOverview();
     if (!treeOverview.trim()) {
-        console.debug('[TunnelVision] Sidecar auto-retrieval: no tree content to navigate');
+        console.warn(`[TunnelVision] Sidecar retrieval SKIP: no tree content to navigate (books: ${activeBooks.join(', ')})`);
         return;
     }
 
@@ -464,9 +475,10 @@ export async function runSidecarRetrieval() {
     const contextMessages = settings.sidecarContextMessages ?? 10;
     const recentChat = extractRecentChat(contextMessages);
     if (!recentChat.trim()) {
-        console.debug('[TunnelVision] Sidecar auto-retrieval: no recent chat context');
+        console.warn(`[TunnelVision] Sidecar retrieval SKIP: no recent chat context (asked for ${contextMessages} messages, chat length ${getContext().chat?.length ?? '?'})`);
         return;
     }
+    console.debug(`[TunnelVision] Sidecar retrieval RUN: ${activeBooks.length} book(s), tree ${treeOverview.length} chars, chat ${recentChat.length} chars`);
 
     // Collect entries with evaluable conditions
     const conditionalEntries = settings.conditionalTriggersEnabled !== false

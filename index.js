@@ -970,6 +970,8 @@ async function onGenerationStarted(type, opts, dryRun) {
         } catch (err) {
             console.error('[TunnelVision] Sidecar auto-retrieval error:', err);
         }
+    } else {
+        console.debug(`[TunnelVision] Sidecar retrieval SKIP: sidecarAutoRetrieval=${!!settings.sidecarAutoRetrieval} globalEnabled=${settings.globalEnabled !== false}`);
     }
 
     // Mandatory tool call instruction (only on first pass, not recursive)
@@ -1051,17 +1053,30 @@ async function onMessageReceived(messageId, type) {
     // Never run sidecar writer on swipes, continues, first messages, or non-generation events.
     // Only run on normal 'normal' generation completions.
     const skipTypes = ['swipe', 'continue', 'appendFinal', 'first_message', 'command', 'extension'];
-    if (skipTypes.includes(type)) return;
+    if (skipTypes.includes(type)) {
+        console.debug(`[TunnelVision] Sidecar writer SKIP: generation type "${type}" is excluded`);
+        return;
+    }
 
     const settings = getSettings();
-    if (!settings.sidecarPostGenWriter || settings.globalEnabled === false) return;
+    if (settings.globalEnabled === false) {
+        console.debug('[TunnelVision] Sidecar writer SKIP: TunnelVision globally disabled');
+        return;
+    }
+    if (!settings.sidecarPostGenWriter) {
+        console.debug('[TunnelVision] Sidecar writer SKIP: setting sidecarPostGenWriter is off');
+        return;
+    }
 
     // In group chats, debounce: wait 800ms after the last MESSAGE_RECEIVED
     // before firing the sidecar writer, so we only run once after the
     // final group member's message instead of N times.
     const context = getContext();
     if (context.groupId) {
-        if (_sidecarWriterDebounceTimer) clearTimeout(_sidecarWriterDebounceTimer);
+        if (_sidecarWriterDebounceTimer) {
+            console.debug(`[TunnelVision] Sidecar writer DEBOUNCE: superseded by newer message ${messageId} in group ${context.groupId}`);
+            clearTimeout(_sidecarWriterDebounceTimer);
+        }
         _sidecarWriterDebounceTimer = setTimeout(async () => {
             _sidecarWriterDebounceTimer = null;
             try {
