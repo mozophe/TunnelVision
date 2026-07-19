@@ -112,17 +112,25 @@ function formatNodeForSidecar(node, depth, isRoot = false) {
 /**
  * Extract recent chat messages for sidecar context.
  * @param {number} maxMessages
+ * @param {boolean} [dropLast] Exclude the tail message (swipes — see below).
  * @returns {string}
  */
-function extractRecentChat(maxMessages = 10) {
+function extractRecentChat(maxMessages = 10, dropLast = false) {
     const context = getContext();
     const chat = context.chat;
     if (!chat || chat.length === 0) return '';
 
-    const lines = [];
-    const start = Math.max(0, chat.length - maxMessages);
+    // On a swipe the rejected response is still sitting in chat[] — ST only drops
+    // it from its own prompt (`if (type === 'swipe') coreChat.pop()`) long after
+    // GENERATION_STARTED fires, so we have to drop it ourselves or the sidecar
+    // retrieves lore based on the response the user just rejected.
+    const end = dropLast ? chat.length - 1 : chat.length;
+    if (end <= 0) return '';
 
-    for (let i = start; i < chat.length; i++) {
+    const lines = [];
+    const start = Math.max(0, end - maxMessages);
+
+    for (let i = start; i < end; i++) {
         const msg = chat[i];
         if (msg.is_system) continue;
         const role = msg.is_user ? 'User' : 'Character';
@@ -438,9 +446,10 @@ async function resolveConditionalContent(evaluations, conditionalEntries) {
  * Run sidecar auto-retrieval before a generation.
  * Called from onGenerationStarted in index.js.
  *
+ * @param {string} [type] ST generation type — 'swipe' excludes the rejected tail message.
  * @returns {Promise<void>}
  */
-export async function runSidecarRetrieval() {
+export async function runSidecarRetrieval(type = null) {
     const settings = getSettings();
 
     // Guard: must be enabled and sidecar must be configured.
@@ -473,12 +482,13 @@ export async function runSidecarRetrieval() {
 
     // Extract recent chat
     const contextMessages = settings.sidecarContextMessages ?? 10;
-    const recentChat = extractRecentChat(contextMessages);
+    const isSwipe = type === 'swipe';
+    const recentChat = extractRecentChat(contextMessages, isSwipe);
     if (!recentChat.trim()) {
-        console.warn(`[TunnelVision] Sidecar retrieval SKIP: no recent chat context (asked for ${contextMessages} messages, chat length ${getContext().chat?.length ?? '?'})`);
+        console.warn(`[TunnelVision] Sidecar retrieval SKIP: no recent chat context (asked for ${contextMessages} messages, chat length ${getContext().chat?.length ?? '?'}, swipe=${isSwipe})`);
         return;
     }
-    console.debug(`[TunnelVision] Sidecar retrieval RUN: ${activeBooks.length} book(s), tree ${treeOverview.length} chars, chat ${recentChat.length} chars`);
+    console.debug(`[TunnelVision] Sidecar retrieval RUN: ${activeBooks.length} book(s), tree ${treeOverview.length} chars, chat ${recentChat.length} chars, swipe=${isSwipe}`);
 
     // Collect entries with evaluable conditions
     const conditionalEntries = settings.conditionalTriggersEnabled !== false
