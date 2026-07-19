@@ -50,6 +50,7 @@ let _generationInProgress = false;
 // so we mirror it here to know when we're on the final pass.
 let _toolRecursionDepth = 0;
 let _skipPreCommandGeneration = false;
+let _stateRefreshTimer = null;
 
 async function init() {
     // Ensure settings exist
@@ -84,6 +85,7 @@ async function init() {
     initWIConditionInjector();
 
     // Load initial state
+    autoDetectLorebooks();
     refreshUI();
 
     // Apply recurse limit override and register tools
@@ -100,6 +102,18 @@ async function init() {
         eventSource.on(event_types.WORLDINFO_SETTINGS_UPDATED, onWorldInfoUpdated);
     }
     eventSource.on(event_types.APP_READY, onAppReady);
+
+    const refreshEvents = [
+        event_types.EXTENSION_SETTINGS_LOADED,
+        event_types.SETTINGS_LOADED,
+        event_types.CONNECTION_PROFILE_LOADED,
+        event_types.CONNECTION_PROFILE_CREATED,
+        event_types.CONNECTION_PROFILE_DELETED,
+        event_types.CONNECTION_PROFILE_UPDATED,
+    ].filter(Boolean);
+    for (const eventName of refreshEvents) {
+        eventSource.on(eventName, () => queueStateRefresh(eventName, 50));
+    }
 
     // Suppress normal WI keyword scanning for TV-managed lorebooks
     if (event_types.WORLDINFO_ENTRIES_LOADED) {
@@ -198,6 +212,8 @@ async function init() {
 }
 
 async function onChatChanged() {
+    // Auto-enable pattern-matched lorebooks FIRST so the migration below sees them
+    // in getActiveTunnelVisionBooks() (autoDetect mutates the active-book set).
     autoDetectLorebooks();
     // Rehydrate sidecar snapshots from this chat's metadata so revert-on-deletion
     // survives a page reload / chat switch.
@@ -207,8 +223,8 @@ async function onChatChanged() {
     migrateSelectedLorebook(getActiveTunnelVisionBooks());
     // Catch slash command deletions (like /cut) which might not emit MESSAGE_DELETED
     await cleanInvalidSidecarMemories();
-    refreshUI();
-    await registerTools();
+    // refreshUI + guarded registerTools (autoDetect re-run inside is idempotent)
+    await refreshRuntimeState('chat changed');
 }
 
 /**
@@ -261,6 +277,7 @@ function autoDetectLorebooks() {
 
 async function onWorldInfoUpdated() {
     console.debug(`[TunnelVision] WORLDINFO_UPDATED fired (generationInProgress=${_generationInProgress})`);
+    autoDetectLorebooks();
     refreshUI();
     if (_generationInProgress) {
         console.debug('[TunnelVision] Skipping tool re-registration during active generation');
@@ -270,6 +287,22 @@ async function onWorldInfoUpdated() {
 }
 
 async function onAppReady() {
+    queueStateRefresh('app ready', 250);
+}
+
+function queueStateRefresh(reason = 'state changed', delay = 0) {
+    if (_stateRefreshTimer) clearTimeout(_stateRefreshTimer);
+    _stateRefreshTimer = setTimeout(() => {
+        _stateRefreshTimer = null;
+        void refreshRuntimeState(reason);
+    }, delay);
+}
+
+async function refreshRuntimeState(reason = 'state changed') {
+    console.debug(`[TunnelVision] Refreshing runtime state (${reason})`);
+    autoDetectLorebooks();
+    refreshUI();
+    if (_generationInProgress) return;
     await registerTools();
 }
 
