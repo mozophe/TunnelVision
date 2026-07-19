@@ -972,35 +972,28 @@ async function executeWriteOps(ops, reasoning = '', messageId = null) {
 export async function runSidecarWriter(messageId = null) {
     const settings = getSettings();
 
-    // Guard: must be enabled and sidecar must be configured.
-    // Every skip path logs a distinct reason — "sidecar didn't fire" is otherwise invisible.
-    if (!settings.sidecarPostGenWriter) {
-        console.debug('[TunnelVision] Sidecar writer SKIP: setting sidecarPostGenWriter is off');
-        return;
-    }
+    // Guard: must be enabled and sidecar must be configured
+    if (!settings.sidecarPostGenWriter) return;
     if (isCircuitOpen()) {
-        console.warn('[TunnelVision] Sidecar writer SKIP: circuit breaker is OPEN (3+ consecutive failures). Run the connectivity test or reload to reset.');
+        console.debug('[TunnelVision] Sidecar post-gen writer: circuit breaker open — skipping');
         return;
     }
     if (!isSidecarConfigured()) {
-        console.warn('[TunnelVision] Sidecar writer SKIP: no sidecar profile configured (endpoint/apiKey missing or profile disabled)');
+        console.debug('[TunnelVision] Sidecar post-gen writer enabled but no sidecar configured — skipping');
         return;
     }
 
     const activeBooks = getReadableBooks();
-    if (activeBooks.length === 0) {
-        console.warn('[TunnelVision] Sidecar writer SKIP: no readable lorebooks active');
-        return;
-    }
+    if (activeBooks.length === 0) return;
     if (getWritableBooks().length === 0) {
-        console.warn(`[TunnelVision] Sidecar writer SKIP: no writable lorebooks (readable: ${activeBooks.join(', ')})`);
+        console.debug('[TunnelVision] Sidecar post-gen writer: no writable lorebooks');
         return;
     }
 
     // Build tree overview (includes entry titles for update reference)
     const treeOverview = await buildWriterTreeOverview();
     if (!treeOverview.trim()) {
-        console.warn(`[TunnelVision] Sidecar writer SKIP: no tree content (books: ${activeBooks.join(', ')})`);
+        console.debug('[TunnelVision] Sidecar post-gen writer: no tree content');
         return;
     }
 
@@ -1008,10 +1001,9 @@ export async function runSidecarWriter(messageId = null) {
     const contextMessages = settings.sidecarWriterContextMessages ?? 15;
     const recentChat = extractRecentChat(contextMessages);
     if (!recentChat.trim()) {
-        console.warn(`[TunnelVision] Sidecar writer SKIP: no recent chat context (asked for ${contextMessages} messages, chat length ${getContext().chat?.length ?? '?'})`);
+        console.debug('[TunnelVision] Sidecar post-gen writer: no recent chat context');
         return;
     }
-    console.debug(`[TunnelVision] Sidecar writer RUN: messageId=${messageId}, tree ${treeOverview.length} chars, chat ${recentChat.length} chars`);
 
     const recentOps = formatRecentOperations(getContext().chatId);
     const summaryTitles = await loadSummaryTitles(activeBooks);

@@ -452,43 +452,34 @@ async function resolveConditionalContent(evaluations, conditionalEntries) {
 export async function runSidecarRetrieval(type = null) {
     const settings = getSettings();
 
-    // Guard: must be enabled and sidecar must be configured.
-    // Every skip path logs a distinct reason — "sidecar didn't fire" is otherwise invisible.
-    if (!settings.sidecarAutoRetrieval) {
-        console.debug('[TunnelVision] Sidecar retrieval SKIP: setting sidecarAutoRetrieval is off');
-        return;
-    }
+    // Guard: must be enabled and sidecar must be configured
+    if (!settings.sidecarAutoRetrieval) return;
     if (isCircuitOpen()) {
-        console.warn('[TunnelVision] Sidecar retrieval SKIP: circuit breaker is OPEN (3+ consecutive failures). Run the connectivity test or reload to reset.');
+        console.debug('[TunnelVision] Sidecar auto-retrieval: circuit breaker open — skipping');
         return;
     }
     if (!isSidecarConfigured()) {
-        console.warn('[TunnelVision] Sidecar retrieval SKIP: no sidecar profile configured (endpoint/apiKey missing or profile disabled)');
+        console.debug('[TunnelVision] Sidecar auto-retrieval enabled but no sidecar configured — skipping');
         return;
     }
 
     const activeBooks = getReadableBooks();
-    if (activeBooks.length === 0) {
-        console.warn('[TunnelVision] Sidecar retrieval SKIP: no readable lorebooks active');
-        return;
-    }
+    if (activeBooks.length === 0) return;
 
     // Build tree overview
     const treeOverview = buildSidecarTreeOverview();
     if (!treeOverview.trim()) {
-        console.warn(`[TunnelVision] Sidecar retrieval SKIP: no tree content to navigate (books: ${activeBooks.join(', ')})`);
+        console.debug('[TunnelVision] Sidecar auto-retrieval: no tree content to navigate');
         return;
     }
 
     // Extract recent chat
     const contextMessages = settings.sidecarContextMessages ?? 10;
-    const isSwipe = type === 'swipe';
-    const recentChat = extractRecentChat(contextMessages, isSwipe);
+    const recentChat = extractRecentChat(contextMessages, type === 'swipe');
     if (!recentChat.trim()) {
-        console.warn(`[TunnelVision] Sidecar retrieval SKIP: no recent chat context (asked for ${contextMessages} messages, chat length ${getContext().chat?.length ?? '?'}, swipe=${isSwipe})`);
+        console.debug('[TunnelVision] Sidecar auto-retrieval: no recent chat context');
         return;
     }
-    console.debug(`[TunnelVision] Sidecar retrieval RUN: ${activeBooks.length} book(s), tree ${treeOverview.length} chars, chat ${recentChat.length} chars, swipe=${isSwipe}`);
 
     // Collect entries with evaluable conditions
     const conditionalEntries = settings.conditionalTriggersEnabled !== false

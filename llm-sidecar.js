@@ -41,13 +41,10 @@ function _recordFailure() {
         _breakerOpen = true;
         _breakerOpenedAt = Date.now();
         console.warn(`[TunnelVision] Sidecar circuit breaker OPEN after ${_failureCount} consecutive failures — retrying in ${Math.round(BREAKER_COOLDOWN_MS / 60_000)} min. Check the Sidecar LLM endpoint if this repeats.`);
-    } else {
-        console.warn(`[TunnelVision] Sidecar failure ${_failureCount}/${BREAKER_THRESHOLD} (breaker opens at ${BREAKER_THRESHOLD}).`);
     }
 }
 
 function _recordSuccess() {
-    if (_failureCount > 0) console.debug(`[TunnelVision] Sidecar success — failure count reset from ${_failureCount}.`);
     resetCircuitBreaker();
 }
 
