@@ -10,7 +10,7 @@
  */
 
 import { getSettings } from './tree-store.js';
-import { SIDECAR_DEFAULT_TIMEOUT_MS } from './constants.js';
+import { SIDECAR_DEFAULT_TIMEOUT_MS, CIRCUIT_BREAKER_THRESHOLD, CIRCUIT_BREAKER_COOLDOWN_MS } from './constants.js';
 
 const MODULE_NAME = 'TunnelVision';
 const THINK_BLOCK_RE = /<think[\s\S]*?<\/think>/gi;
@@ -18,20 +18,29 @@ const THINK_BLOCK_RE = /<think[\s\S]*?<\/think>/gi;
 // ─── Circuit Breaker ────────────────────────────────────────────────
 // Opens after BREAKER_THRESHOLD consecutive sidecarGenerate failures; a single
 // success resets it. Prevents hammering a misconfigured endpoint.
-const BREAKER_THRESHOLD = 3;
+//
+// The breaker re-closes on its own after BREAKER_COOLDOWN_MS. A slow or flaky
+// provider trips it in three turns, and without a cooldown the sidecar would
+// stay dead for the rest of the page session — including after the provider
+// recovered — with the user seeing only that it silently stopped working.
+const BREAKER_THRESHOLD = CIRCUIT_BREAKER_THRESHOLD;
+const BREAKER_COOLDOWN_MS = CIRCUIT_BREAKER_COOLDOWN_MS;
 let _failureCount = 0;
 let _breakerOpen = false;
+let _breakerOpenedAt = 0;
 
 export function resetCircuitBreaker() {
     _failureCount = 0;
     _breakerOpen = false;
+    _breakerOpenedAt = 0;
 }
 
 function _recordFailure() {
     _failureCount += 1;
     if (_failureCount >= BREAKER_THRESHOLD) {
         _breakerOpen = true;
-        console.warn(`[TunnelVision] Sidecar circuit breaker OPEN after ${_failureCount} consecutive failures — sidecar disabled until reset (reload or successful connectivity test).`);
+        _breakerOpenedAt = Date.now();
+        console.warn(`[TunnelVision] Sidecar circuit breaker OPEN after ${_failureCount} consecutive failures — retrying in ${Math.round(BREAKER_COOLDOWN_MS / 60_000)} min. Check the Sidecar LLM endpoint if this repeats.`);
     } else {
         console.warn(`[TunnelVision] Sidecar failure ${_failureCount}/${BREAKER_THRESHOLD} (breaker opens at ${BREAKER_THRESHOLD}).`);
     }
@@ -39,12 +48,21 @@ function _recordFailure() {
 
 function _recordSuccess() {
     if (_failureCount > 0) console.debug(`[TunnelVision] Sidecar success — failure count reset from ${_failureCount}.`);
-    _failureCount = 0;
-    _breakerOpen = false;
+    resetCircuitBreaker();
 }
 
-/** True when the circuit breaker has tripped. Distinguishes "broken" from "unconfigured". */
+/**
+ * True when the breaker has tripped and the cooldown has not yet elapsed.
+ * Distinguishes "temporarily broken" from "unconfigured". Expiring the cooldown
+ * here means the next call goes through and either succeeds (closing the
+ * breaker) or fails (re-opening it) — a half-open probe without a scheduler.
+ */
 export function isCircuitOpen() {
+    if (_breakerOpen && Date.now() - _breakerOpenedAt >= BREAKER_COOLDOWN_MS) {
+        console.debug('[TunnelVision] Sidecar circuit breaker cooldown elapsed — retrying sidecar on next call.');
+        _breakerOpen = false;
+        _failureCount = BREAKER_THRESHOLD - 1; // one more failure re-opens it
+    }
     return _breakerOpen;
 }
 
@@ -73,7 +91,7 @@ export function getSidecarConfig() {
 
 /** True when sidecar is fully configured and the circuit breaker is closed. */
 export function isSidecarConfigured() {
-    return !_breakerOpen && getSidecarConfig() !== null;
+    return !isCircuitOpen() && getSidecarConfig() !== null;
 }
 
 /** Display label for the activity feed. */
@@ -116,6 +134,12 @@ async function _fetchJson(url, options, label) {
     let response;
     try {
         response = await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+        // A bare AbortError reads as "signal is aborted without reason" — name the timeout.
+        if (error?.name === 'AbortError') {
+            throw new Error(`${label} timed out after ${SIDECAR_DEFAULT_TIMEOUT_MS / 1000}s — the sidecar endpoint did not respond in time.`);
+        }
+        throw error;
     } finally {
         clearTimeout(timer);
     }
@@ -149,7 +173,7 @@ function _modelsBase(endpoint) {
  * @returns {Promise<string>}
  */
 export async function sidecarGenerate({ prompt, systemPrompt }) {
-    if (_breakerOpen) {
+    if (isCircuitOpen()) {
         throw new Error('Sidecar circuit breaker open — too many consecutive failures. Check the Sidecar LLM configuration.');
     }
     const config = getSidecarConfig();
