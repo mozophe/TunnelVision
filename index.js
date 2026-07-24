@@ -34,6 +34,7 @@ import { initAutoSummary } from './auto-summary.js';
 import { initPostTurnProcessor } from './post-turn-processor.js';
 import { runSidecarRetrieval } from './sidecar-retrieval.js';
 import { runSidecarWriter, revertMessageSnapshots, revertInvalidSnapshots, hydrateSnapshots } from './sidecar-writer.js';
+import { abortSidecarFetches } from './llm-sidecar.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
@@ -163,6 +164,17 @@ async function init() {
                 window.TunnelVision_isRecursiveToolPass = false;
             });
         }
+    }
+
+    // Abort any in-flight sidecar retrieval when the user stops generation.
+    // Separate from the guard-clearing block above (which only runs its
+    // GENERATION_STOPPED branch when GENERATION_ENDED is absent). This one is
+    // always registered so stop actually cancels the sidecar fetch.
+    if (event_types.GENERATION_STOPPED) {
+        eventSource.on(event_types.GENERATION_STOPPED, () => {
+            console.debug('[TunnelVision] GENERATION_STOPPED — aborting in-flight sidecar fetches');
+            abortSidecarFetches();
+        });
     }
 
     // Post-generation sidecar writer (remember/update after model responds)
