@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../../../st-context.js', () => ({ getContext: vi.fn() }));
@@ -55,6 +56,7 @@ describe('sidecar retrieval — cancellation', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         getContext.mockReturnValue({ chat: CHAT });
+        document.body.innerHTML = '<button id="mes_stop" class="mes_stop" style="display:none"></button>';
     });
 
     it('resolves without throwing when the sidecar call is cancelled', async () => {
@@ -78,5 +80,21 @@ describe('sidecar retrieval — cancellation', () => {
         expect(errorSpy).not.toHaveBeenCalled();
         debugSpy.mockRestore();
         errorSpy.mockRestore();
+    });
+
+    it('reveals ST\'s stop button while the sidecar call runs', async () => {
+        const { sidecarGenerate } = await import('../llm-sidecar.js');
+        let displayDuringCall = null;
+        sidecarGenerate.mockImplementationOnce(async () => {
+            displayDuringCall = document.getElementById('mes_stop').style.display;
+            return 'NODES: none';
+        });
+        await runSidecarRetrieval();
+        expect(displayDuringCall).toBe('flex');
+    });
+
+    it('restores the stop button to hidden after retrieval', async () => {
+        await runSidecarRetrieval();
+        expect(document.getElementById('mes_stop').style.display).toBe('none');
     });
 });

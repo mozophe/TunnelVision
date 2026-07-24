@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Host context + heavy local deps mocked so we can exercise the retrieval

@@ -487,6 +487,13 @@ export async function runSidecarRetrieval(type = null) {
         : [];
     const conditionalSection = buildConditionalSection(conditionalEntries);
 
+    // ST hides #mes_stop until after the GENERATION_STARTED await, so there is no
+    // cancel affordance during retrieval. Reveal ST's own button for the duration;
+    // clicking it runs stopGeneration() → GENERATION_STOPPED → abortSidecarFetches().
+    // ponytail: reuse ST's button, restore its prior state — no new UI, no ST import
+    const stopBtn = document.getElementById('mes_stop');
+    const revealedStopBtn = stopBtn && getComputedStyle(stopBtn).display === 'none';
+    if (revealedStopBtn) stopBtn.style.display = 'flex';
     setSidecarActive(true);
     try {
         // Ask sidecar LLM to pick relevant nodes AND evaluate conditionals
@@ -593,6 +600,7 @@ export async function runSidecarRetrieval(type = null) {
         clearRetrievalPrompt(settings);
     } finally {
         setSidecarActive(false);
+        if (revealedStopBtn) stopBtn.style.display = 'none';
     }
 }
 
