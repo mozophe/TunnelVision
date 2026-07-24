@@ -69,4 +69,14 @@ describe('sidecar retrieval — cancellation', () => {
         );
         expect(clearedCall).toBeTruthy();
     });
+
+    it('logs the cancel via console.debug, not console.error', async () => {
+        const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        await runSidecarRetrieval();
+        expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('cancelled'));
+        expect(errorSpy).not.toHaveBeenCalled();
+        debugSpy.mockRestore();
+        errorSpy.mockRestore();
+    });
 });
