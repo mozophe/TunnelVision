@@ -30,13 +30,21 @@ let _breakerOpen = false;
 let _breakerOpenedAt = 0;
 
 // ─── In-flight fetch tracking ────────────────────────────────────────
-// Every _fetchJson registers its AbortController here so an external stop
-// (ST's GENERATION_STOPPED) can cancel the request mid-flight. Deregistered
-// in _fetchJson's finally.
-// ponytail: a flat set, ST runs one generation at a time
+// Only fetches started inside a retrieval scope are abortable. This keeps
+// ST's stop button from cancelling an in-flight sidecar *writer* (a memory
+// write), which would silently drop it. _fetchJson registers its controller
+// while the scope is open; abortSidecarFetches() aborts those on GENERATION_STOPPED.
+// ponytail: a depth counter, not a bool — safe if a scope ever nests
 const _activeFetches = new Set();
+let _retrievalScopeDepth = 0;
 
-/** Abort every in-flight sidecar fetch. Called when the user stops generation. */
+/** Mark the start of retrieval network work; fetches started now are abortable. */
+export function beginRetrievalScope() { _retrievalScopeDepth++; }
+
+/** Mark the end of retrieval network work. Floors at 0 so it can't underflow. */
+export function endRetrievalScope() { _retrievalScopeDepth = Math.max(0, _retrievalScopeDepth - 1); }
+
+/** Abort every in-flight retrieval fetch. Called when the user stops generation. */
 export function abortSidecarFetches() {
     for (const controller of _activeFetches) controller.abort();
 }
@@ -141,7 +149,8 @@ async function _fetchJson(url, options, label) {
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, SIDECAR_DEFAULT_TIMEOUT_MS);
-    _activeFetches.add(controller);
+    const tracked = _retrievalScopeDepth > 0;
+    if (tracked) _activeFetches.add(controller);
     let response;
     try {
         response = await fetch(url, { ...options, signal: controller.signal });
@@ -158,7 +167,7 @@ async function _fetchJson(url, options, label) {
         throw error;
     } finally {
         clearTimeout(timer);
-        _activeFetches.delete(controller);
+        if (tracked) _activeFetches.delete(controller);
     }
     if (!response.ok) {
         let detail = '';

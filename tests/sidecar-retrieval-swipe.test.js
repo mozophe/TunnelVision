@@ -33,6 +33,8 @@ vi.mock('../llm-sidecar.js', () => ({
     isCircuitOpen: vi.fn(() => false),
     sidecarGenerate: vi.fn(async () => 'NODES: none'),
     getSidecarModelLabel: vi.fn(() => 'test-model'),
+    beginRetrievalScope: vi.fn(),
+    endRetrievalScope: vi.fn(),
 }));
 vi.mock('../activity-feed.js', () => ({
     logSidecarRetrieval: vi.fn(),

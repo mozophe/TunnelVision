@@ -31,6 +31,8 @@ vi.mock('../llm-sidecar.js', () => ({
     isCircuitOpen: vi.fn(() => false),
     sidecarGenerate: vi.fn(async () => { throw Object.assign(new Error('Sidecar cancelled'), { name: 'TVAbortError', cancelled: true }); }),
     getSidecarModelLabel: vi.fn(() => 'test-model'),
+    beginRetrievalScope: vi.fn(),
+    endRetrievalScope: vi.fn(),
 }));
 vi.mock('../activity-feed.js', () => ({
     logSidecarRetrieval: vi.fn(),
