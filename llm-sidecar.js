@@ -29,6 +29,18 @@ let _failureCount = 0;
 let _breakerOpen = false;
 let _breakerOpenedAt = 0;
 
+// ─── In-flight fetch tracking ────────────────────────────────────────
+// Every _fetchJson registers its AbortController here so an external stop
+// (ST's GENERATION_STOPPED) can cancel the request mid-flight. Deregistered
+// in _fetchJson's finally.
+// ponytail: a flat set, ST runs one generation at a time
+const _activeFetches = new Set();
+
+/** Abort every in-flight sidecar fetch. Called when the user stops generation. */
+export function abortSidecarFetches() {
+    for (const controller of _activeFetches) controller.abort();
+}
+
 export function resetCircuitBreaker() {
     _failureCount = 0;
     _breakerOpen = false;
@@ -127,18 +139,26 @@ export function isEmbeddingSupported() {
 
 async function _fetchJson(url, options, label) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), SIDECAR_DEFAULT_TIMEOUT_MS);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, SIDECAR_DEFAULT_TIMEOUT_MS);
+    _activeFetches.add(controller);
     let response;
     try {
         response = await fetch(url, { ...options, signal: controller.signal });
     } catch (error) {
-        // A bare AbortError reads as "signal is aborted without reason" — name the timeout.
         if (error?.name === 'AbortError') {
-            throw new Error(`${label} timed out after ${SIDECAR_DEFAULT_TIMEOUT_MS / 1000}s — the sidecar endpoint did not respond in time.`);
+            if (timedOut) {
+                // A bare AbortError reads as "signal is aborted without reason" — name the timeout.
+                throw new Error(`${label} timed out after ${SIDECAR_DEFAULT_TIMEOUT_MS / 1000}s — the sidecar endpoint did not respond in time.`);
+            }
+            // External abort (user pressed stop) — tag it so callers stay quiet
+            // and the circuit breaker doesn't count it as a failure.
+            throw Object.assign(new Error(`${label} cancelled`), { name: 'TVAbortError', cancelled: true });
         }
         throw error;
     } finally {
         clearTimeout(timer);
+        _activeFetches.delete(controller);
     }
     if (!response.ok) {
         let detail = '';
@@ -190,7 +210,8 @@ export async function sidecarGenerate({ prompt, systemPrompt }) {
         _recordSuccess();
         return typeof result === 'string' ? result.replace(THINK_BLOCK_RE, '').trim() : result;
     } catch (error) {
-        _recordFailure();
+        // A user-cancel is not an endpoint failure — don't push the breaker toward opening.
+        if (!error?.cancelled) _recordFailure();
         throw error;
     }
 }

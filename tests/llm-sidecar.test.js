@@ -420,6 +420,57 @@ describe('sidecarGenerate', () => {
     });
 });
 
+// ── abortSidecarFetches ──────────────────────────────────────────
+
+import { abortSidecarFetches } from '../llm-sidecar.js';
+
+describe('abortSidecarFetches', () => {
+    // A fetch that never resolves on its own — it only settles when its
+    // AbortSignal fires, mirroring a real request the user cancels mid-flight.
+    function abortableFetch() {
+        return vi.fn((url, opts) => new Promise((_, reject) => {
+            opts.signal.addEventListener('abort', () => {
+                const err = new Error('The operation was aborted');
+                err.name = 'AbortError';
+                reject(err);
+            });
+        }));
+    }
+
+    it('rejects an in-flight sidecarGenerate as cancelled, not timed out', async () => {
+        mockSidecarProfile = { ...validProfile };
+        vi.stubGlobal('fetch', abortableFetch());
+
+        const pending = sidecarGenerate({ prompt: 'test' });
+        await Promise.resolve(); // let _fetchJson register its controller
+        abortSidecarFetches();
+
+        await expect(pending).rejects.toMatchObject({ cancelled: true });
+        await expect(pending).rejects.not.toThrow(/timed out/);
+
+        vi.unstubAllGlobals();
+    });
+
+    it('does not count a cancel toward the circuit breaker', async () => {
+        mockSidecarProfile = { ...validProfile };
+        vi.stubGlobal('fetch', abortableFetch());
+
+        // Three cancels — more than the breaker threshold of 3.
+        for (let i = 0; i < 3; i++) {
+            const pending = sidecarGenerate({ prompt: 'test' });
+            await Promise.resolve();
+            abortSidecarFetches();
+            try { await pending; } catch { /* cancelled */ }
+        }
+
+        // Breaker stays closed: a cancel is not a failure.
+        expect(isSidecarConfigured()).toBe(true);
+        expect(isCircuitOpen()).toBe(false);
+
+        vi.unstubAllGlobals();
+    });
+});
+
 // ── getEmbeddingConfig ───────────────────────────────────────────
 
 describe('getEmbeddingConfig', () => {
