@@ -585,7 +585,11 @@ export async function runSidecarRetrieval(type = null) {
         console.log(`Total chars: ${capped.length} (~${Math.round(capped.length / 4)} tokens)`);
         console.groupEnd();
     } catch (error) {
-        console.error('[TunnelVision] Sidecar auto-retrieval failed:', error);
+        if (error?.cancelled) {
+            console.debug('[TunnelVision] Sidecar auto-retrieval cancelled — user stopped generation');
+        } else {
+            console.error('[TunnelVision] Sidecar auto-retrieval failed:', error);
+        }
         clearRetrievalPrompt(settings);
     } finally {
         setSidecarActive(false);
