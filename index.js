@@ -41,6 +41,7 @@ import { abortSidecarFetches } from './llm-sidecar.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
+import { isOocUserTurn, suppressTunnelVisionTools } from './turn-classification.js';
 
 const EXTENSION_NAME = 'tunnelvision';
 const EXTENSION_FOLDER = `third-party/TunnelVision`;
@@ -48,6 +49,9 @@ const EXTENSION_FOLDER = `third-party/TunnelVision`;
 // Guard: prevents tool re-registration when WORLDINFO_UPDATED fires during generation
 // (lorebook saves from tool actions trigger this event mid-generation).
 let _generationInProgress = false;
+// True from the start of an OOC generation until its response event finishes.
+// Used to suppress both prompt-time retrieval and post-response memory writes.
+let _skipTunnelVisionForOoc = false;
 
 // Tracks recursion depth for tool-call passes within a single generation turn.
 // ST's Generate() increments depth internally but doesn't expose it to extensions,
@@ -158,6 +162,7 @@ async function init() {
         eventSource.on(event_types.GENERATION_ENDED, () => {
             console.debug('[TunnelVision] GENERATION_ENDED — clearing generation guards');
             _generationInProgress = false;
+            _skipTunnelVisionForOoc = false;
             _toolRecursionDepth = 0;
             _skipPreCommandGeneration = false;
             _keywordTriggeredUids.clear();
@@ -168,6 +173,7 @@ async function init() {
             eventSource.on(event_types.GENERATION_STOPPED, () => {
                 console.debug('[TunnelVision] GENERATION_STOPPED — clearing generation guards');
                 _generationInProgress = false;
+                _skipTunnelVisionForOoc = false;
                 _toolRecursionDepth = 0;
                 _skipPreCommandGeneration = false;
                 window.TunnelVision_isRecursiveToolPass = false;
@@ -226,6 +232,7 @@ async function init() {
 }
 
 async function onChatChanged() {
+    _skipTunnelVisionForOoc = false;
     // A stale sidecar retrieval injection from the previous chat must not
     // leak into the newly loaded one.
     clearRetrievalPrompt(getSettings());
@@ -909,6 +916,15 @@ function convertToolChoiceToAnthropicFormat(toolChoice) {
 function onChatCompletionSettingsReady(data) {
     if (!_generationInProgress) return;
 
+    // OOC turns must not expose TunnelVision tools to the model. Keep tools
+    // registered globally for subsequent turns, but remove only TV definitions
+    // from this request so tools belonging to other extensions still work.
+    if (_skipTunnelVisionForOoc) {
+        suppressTunnelVisionTools(data);
+        console.debug('[TunnelVision] OOC turn — removed TunnelVision tools from API request');
+        return;
+    }
+
     // ── Final-pass tool stripping ────────────────────────────────────
     const recurseLimit = ToolManager.RECURSE_LIMIT ?? 5;
     if (recurseLimit > 1 && _toolRecursionDepth >= recurseLimit - 1) {
@@ -949,6 +965,7 @@ async function onGenerationStarted(type, opts, dryRun) {
     if (dryRun) return;
 
     if (isPendingSlashCommandGeneration(type)) {
+        _skipTunnelVisionForOoc = false;
         _skipPreCommandGeneration = true;
         _generationInProgress = false;
         _toolRecursionDepth = 0;
@@ -984,6 +1001,32 @@ async function onGenerationStarted(type, opts, dryRun) {
     window.TunnelVision_toolRecursionDepth = _toolRecursionDepth;
 
     const settings = getSettings();
+
+    _skipTunnelVisionForOoc = isOocUserTurn(context.chat);
+    if (_skipTunnelVisionForOoc) {
+        _toolRecursionDepth = 0;
+        window.TunnelVision_isRecursiveToolPass = false;
+        window.TunnelVision_toolRecursionDepth = 0;
+        resetNotebookWriteGuard();
+        resetSearchLoopTracker();
+        resetSelectiveRetrievalTracker();
+
+        const mandatoryPosition = mapPositionSetting(settings.mandatoryPromptPosition);
+        const mandatoryRoleSetting = (settings.mandatoryPromptPosition === 'in_chat' && settings.mandatoryPromptRole === 'user')
+            ? 'system' : settings.mandatoryPromptRole;
+        const mandatoryRole = mapRoleSetting(mandatoryRoleSetting);
+        setExtensionPrompt(TV_PROMPT_KEY, '', mandatoryPosition, settings.mandatoryPromptDepth ?? 1, false, mandatoryRole);
+
+        const notebookPosition = mapPositionSetting(settings.notebookPromptPosition);
+        const notebookRoleSetting = (settings.notebookPromptPosition === 'in_chat' && settings.notebookPromptRole === 'user')
+            ? 'system' : settings.notebookPromptRole;
+        const notebookRole = mapRoleSetting(notebookRoleSetting);
+        setExtensionPrompt(TV_NOTEBOOK_KEY, '', notebookPosition, settings.notebookPromptDepth ?? 1, false, notebookRole);
+        clearRetrievalPrompt(settings);
+
+        console.log('[TunnelVision] OOC user message detected — skipping TunnelVision for this turn');
+        return;
+    }
 
     // On recursive passes, clear the mandatory tool prompt so the model isn't
     // told "you MUST call a tool" when it already has tool results and should
@@ -1097,14 +1140,21 @@ async function onMessageReceived(messageId, type) {
     console.debug(`[TunnelVision] MESSAGE_RECEIVED: messageId=${messageId} type="${type}"`);
     // Clear generation guards BEFORE the sidecar writer runs, so that lorebook
     // writes triggered by the writer do not get blocked by the generation guard.
+    const skipOocTurn = _skipTunnelVisionForOoc || isOocUserTurn(getContext().chat);
     _generationInProgress = false;
     _skipPreCommandGeneration = false;
+    _skipTunnelVisionForOoc = false;
     window.TunnelVision_isRecursiveToolPass = false;
 
     try {
         await flushPendingSummaryHide();
     } catch (err) {
         console.error('[TunnelVision] Failed to flush pending summary hide:', err);
+    }
+
+    if (skipOocTurn) {
+        console.debug('[TunnelVision] OOC turn — skipping post-generation sidecar writer');
+        return;
     }
 
     // Never run sidecar writer on swipes, continues, first messages, regenerations,

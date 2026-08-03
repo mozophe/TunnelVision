@@ -9,6 +9,7 @@ import { eventSource, event_types, setExtensionPrompt, extension_prompt_types } 
 import { getContext } from '../../../st-context.js';
 import { getSettings } from './tree-store.js';
 import { getActiveTunnelVisionBooks } from './tool-registry.js';
+import { isOocUserTurn } from './turn-classification.js';
 
 const TV_AUTOSUMMARY_KEY = 'tunnelvision_autosummary';
 const TV_AUTOSUMMARY_COUNTER_KEY = 'tunnelvision_autosummary_counter';
@@ -56,6 +57,7 @@ function getChatId() {
 function onMessageReceived() {
     const settings = getSettings();
     if (!settings.autoSummaryEnabled || settings.globalEnabled === false) return;
+    if (isOocUserTurn(getContext().chat)) return;
 
     const chatId = getChatId();
     if (!chatId) return;
@@ -67,6 +69,10 @@ function onMessageReceived() {
 
 function onGenerationForAutoSummary() {
     const settings = getSettings();
+    if (isOocUserTurn(getContext().chat)) {
+        clearPrompt();
+        return;
+    }
     if (!settings.autoSummaryEnabled || settings.globalEnabled === false) {
         clearPrompt();
         return;
