@@ -41,7 +41,7 @@ import { abortSidecarFetches } from './llm-sidecar.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
-import { isOocUserTurn, suppressTunnelVisionTools } from './turn-classification.js';
+import { isOocTurn, isOocUserTurn, suppressTunnelVisionTools } from './turn-classification.js';
 
 const EXTENSION_NAME = 'tunnelvision';
 const EXTENSION_FOLDER = `third-party/TunnelVision`;
@@ -948,6 +948,20 @@ function isPendingSlashCommandGeneration(type) {
     }
 }
 
+/**
+ * Read user input during GENERATION_STARTED. At this point SillyTavern has not
+ * yet copied normal textarea input into the chat array.
+ *
+ * @returns {string}
+ */
+function getPendingUserInput() {
+    try {
+        return String($('#send_textarea').val() || '');
+    } catch {
+        return '';
+    }
+}
+
 function onGenerationAfterCommands(_type, _opts, dryRun) {
     if (dryRun) return;
     _skipPreCommandGeneration = false;
@@ -1002,7 +1016,7 @@ async function onGenerationStarted(type, opts, dryRun) {
 
     const settings = getSettings();
 
-    _skipTunnelVisionForOoc = isOocUserTurn(context.chat);
+    _skipTunnelVisionForOoc = isOocTurn(context.chat, getPendingUserInput());
     if (_skipTunnelVisionForOoc) {
         _toolRecursionDepth = 0;
         window.TunnelVision_isRecursiveToolPass = false;

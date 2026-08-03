@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isOocMessage, isOocUserTurn, suppressTunnelVisionTools } from '../turn-classification.js';
+import { isOocMessage, isOocTurn, isOocUserTurn, suppressTunnelVisionTools } from '../turn-classification.js';
 
 describe('OOC turn classification', () => {
     it.each([
@@ -38,6 +38,24 @@ describe('OOC turn classification', () => {
         ];
 
         expect(isOocUserTurn(chat)).toBe(false);
+    });
+
+    it('detects pending OOC textarea input before SillyTavern adds it to chat', () => {
+        const chat = [
+            { is_user: true, mes: 'Previous in-character message' },
+            { is_user: false, mes: 'Previous reply' },
+        ];
+
+        expect(isOocTurn(chat, 'OOC do not use memory')).toBe(true);
+    });
+
+    it('falls back to chat history for swipe and regenerate flows', () => {
+        const chat = [
+            { is_user: true, mes: 'OOC revise your response' },
+            { is_user: false, mes: 'Previous reply' },
+        ];
+
+        expect(isOocTurn(chat, '')).toBe(true);
     });
 });
 

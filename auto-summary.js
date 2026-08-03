@@ -9,7 +9,7 @@ import { eventSource, event_types, setExtensionPrompt, extension_prompt_types } 
 import { getContext } from '../../../st-context.js';
 import { getSettings } from './tree-store.js';
 import { getActiveTunnelVisionBooks } from './tool-registry.js';
-import { isOocUserTurn } from './turn-classification.js';
+import { isOocTurn, isOocUserTurn } from './turn-classification.js';
 
 const TV_AUTOSUMMARY_KEY = 'tunnelvision_autosummary';
 const TV_AUTOSUMMARY_COUNTER_KEY = 'tunnelvision_autosummary_counter';
@@ -69,7 +69,12 @@ function onMessageReceived() {
 
 function onGenerationForAutoSummary() {
     const settings = getSettings();
-    if (isOocUserTurn(getContext().chat)) {
+    let pendingUserInput = '';
+    try {
+        pendingUserInput = String($('#send_textarea').val() || '');
+    } catch { /* no textarea in tests/non-UI contexts */ }
+
+    if (isOocTurn(getContext().chat, pendingUserInput)) {
         clearPrompt();
         return;
     }

@@ -32,6 +32,19 @@ export function isOocUserTurn(chat) {
 }
 
 /**
+ * Whether the current generation belongs to an OOC user turn. SillyTavern
+ * emits GENERATION_STARTED before moving normal user input from the textarea
+ * into the chat array, so both sources must be checked.
+ *
+ * @param {Array<Object>} chat
+ * @param {*} pendingUserInput
+ * @returns {boolean}
+ */
+export function isOocTurn(chat, pendingUserInput = '') {
+    return isOocMessage(pendingUserInput) || isOocUserTurn(chat);
+}
+
+/**
  * Remove TunnelVision function definitions from one chat-completion request
  * while preserving tools registered by SillyTavern or other extensions.
  *
