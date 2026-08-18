@@ -6,7 +6,18 @@ describe('OOC turn classification', () => {
         'OOC explain the previous reply',
         '  OOC: change the formatting',
         'ooc please stop the scene',
-    ])('recognizes an OOC prefix in %j', (text) => {
+    ])('recognizes a bare OOC prefix in %j', (text) => {
+        expect(isOocMessage(text)).toBe(true);
+    });
+
+    it.each([
+        '(OOC: how old is she again?)',
+        '((OOC: how old is she again?))',
+        '[OOC: how old is she again?]',
+        '<OOC> how old is she again?',
+        '**OOC** how old is she again?',
+        '  ((ooc: lowercase and indented))',
+    ])('recognizes a wrapped OOC marker in %j', (text) => {
         expect(isOocMessage(text)).toBe(true);
     });
 
@@ -16,6 +27,17 @@ describe('OOC turn classification', () => {
         '',
         null,
     ])('does not match a non-prefix value %j', (text) => {
+        expect(isOocMessage(text)).toBe(false);
+    });
+
+    // Bare brackets are action beats and sound effects, not OOC. Treating them
+    // as OOC would suppress memory writes on ordinary roleplay.
+    it.each([
+        '[ she leaves the room ]',
+        '(( a door slams ))',
+        '*he shrugs*',
+        '{{OOC}} macro syntax, not a marker',
+    ])('does not treat unmarked brackets or emphasis as OOC: %j', (text) => {
         expect(isOocMessage(text)).toBe(false);
     });
 

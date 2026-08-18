@@ -1,13 +1,20 @@
 /**
  * Whether a message explicitly starts an out-of-character turn.
- * Leading whitespace is ignored and the marker is case-insensitive, but it
- * must be the complete first word (so "OOCly" does not match).
+ *
+ * The marker is case-insensitive and may be wrapped in the usual chat
+ * decorations — `(OOC: ...)`, `((OOC: ...))`, `[OOC: ...]`, `<OOC> ...`,
+ * `**OOC** ...` — so leading brackets and emphasis are skipped.
+ *
+ * It must still be the complete first word: "OOCly" does not match, and
+ * neither does a bare `[ ... ]` or `(( ... ))` with no OOC marker inside.
+ * Those brackets are widely used for action beats and sound effects mid-scene,
+ * so treating them as OOC would suppress memory writes on ordinary roleplay.
  *
  * @param {*} text
  * @returns {boolean}
  */
 export function isOocMessage(text) {
-    return /^\s*OOC\b/i.test(String(text ?? ''));
+    return /^[\s(\[<*]*OOC\b/i.test(String(text ?? ''));
 }
 
 /**
