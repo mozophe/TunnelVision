@@ -19,17 +19,44 @@ Most of what this fork used to carry has since been merged upstream — per-chat
 lorebooks, self-contained sidecar API config, snapshot undo/cleanup, activity
 feed ordering, `tv_tracker` keywords and the dedup/summary work all live in
 [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision) now.
-What remains here are two behaviours not yet upstream:
+What remains here are three behaviours not yet upstream:
 
 | Area | What changed |
 |------|--------------|
 | ⏹️ **Stop actually stops** | ST hides its stop button until *after* sidecar retrieval, so a retrieval couldn't be interrupted and the reply was sent regardless. The button is now revealed for the duration, and pressing it cancels the retrieval *and* the main model request. ([#46](https://github.com/Coneja-Chibi/TunnelVision/pull/46)) |
 | 💬 **OOC turns read, don't write** | An OOC aside still gets full lorebook retrieval — it's a question *about* the story — but cannot write. Write tools are stripped from the request, the mandatory-tool instruction is withheld, and every post-turn writer skips the turn. ([#48](https://github.com/Coneja-Chibi/TunnelVision/pull/48)) |
+| 📱 **The tree editor works on a phone** | Assigning an entry to a category was drag-and-drop only, and HTML5 drag events never fire from touch — so on a phone there was no way to do the editor's main job. See below. |
 
 **Recognised OOC markers:** `OOC: ...`, `(OOC: ...)`, `((OOC: ...))`,
 `[OOC: ...]`, `<OOC> ...`, `**OOC** ...` — the literal word must be the first
 token. A bare `[ ... ]` or `(( ... ))` is *not* treated as OOC, since those are
 ordinary action beats and sound effects.
+
+### 📱 The tree editor on mobile
+
+Three things were in the way, and only the first was a missing feature.
+
+**Assignment needed a non-drag path.** Every entry row now has a **Move to…**
+button that opens a flat, indented list of every category; tap one and the entry
+moves. It shows on desktop too, where it beats dragging across the panel on a
+deep tree. Drag-and-drop is untouched for anyone who prefers it.
+
+**The layout fought the screen.** The sidebar and the main panel were stacked,
+so every move meant tapping a node at the top, scrolling past the whole tree to
+reach its entries, then scrolling back up. The main panel was already a
+drill-down navigator — the breadcrumb walks up, the child cards walk down — so
+the sidebar is now hidden below 768px and the panel gets the full height with a
+single scroll region. Unassigned entries, previously reachable only from the
+sidebar, appear as a card on the root.
+
+**The mobile stylesheet had never actually applied.** A media query adds no
+specificity, so its rules only win by coming later in the file — and this block
+sat *above* almost everything it targeted. 33 declarations were silently losing
+to the very rules they existed to override: the sidebar never hid, inputs stayed
+at 13px (so iOS zoomed on every tap and never zoomed back), and none of the
+enlarged touch targets were real. Moving the block to the end of `style.css`
+fixed all of them at once, which is why it now carries a comment saying it has to
+stay there.
 
 ---
 
@@ -501,7 +528,7 @@ tree-store.js     : Tree data structure, CRUD, settings, serialization
 tree-builder.js   : Auto-build trees from lorebook metadata or LLM
 tool-registry.js  : ToolManager registration for all 8 tools
 entry-manager.js  : Lorebook CRUD shared by all memory tools
-ui-controller.js  : Settings panel, tree editor, drag-and-drop
+ui-controller.js  : Settings panel, tree editor, drag-and-drop + move picker
 diagnostics.js    : 30+ failure checks with auto-fixes
 commands.js       : !command syntax interceptor
 auto-summary.js   : Interval-based summary injection
