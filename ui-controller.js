@@ -36,6 +36,7 @@ import {
 } from './tree-store.js';
 import { buildTreeFromMetadata, buildTreeWithLLM, generateSummariesForTree, ingestChatMessages } from './tree-builder.js';
 import { testSidecarConnectivity, testEmbeddingConnectivity } from './llm-sidecar.js';
+import { isEmbeddingAvailable } from './embedding-cache.js';
 import { registerTools, unregisterTools, getDefaultToolDescriptions, stripDynamicContent } from './tool-registry.js';
 import { runDiagnostics } from './diagnostics.js';
 import { clearRetrievalPrompt } from './sidecar-retrieval.js';
@@ -95,6 +96,15 @@ export function bindUIEvents() {
 
     // Lorebook filter
     $('#tv_lorebook_filter').on('input', onLorebookFilter);
+
+    // Advanced settings filter
+    $('#tv_adv_search').on('input', onAdvancedFilter);
+    $('#tv_adv_search_clear').on('click', function () {
+        $('#tv_adv_search').val('').trigger('input').trigger('focus');
+    });
+    // Sections nobody filed into a category render at the bottom, below the
+    // categories. See moveUngroupedSectionsToEnd().
+    moveUngroupedSectionsToEnd();
 
     // Advanced Settings collapsible header
     $('#tv_advanced_header').on('click', function () {
@@ -156,6 +166,8 @@ export function bindUIEvents() {
     // Vector dedup toggle + threshold
     $('#tv_vector_dedup').on('change', onVectorDedupToggle);
     $('#tv_dedup_threshold').on('change', onDedupThresholdChange);
+    $('#tv_trigram_threshold').on('change', onTrigramThresholdChange);
+    $('#tv_remember_dedup_mode').on('change', onRememberDedupModeChange);
 
     // Chat ingest
     $('#tv_ingest_chat').on('click', onIngestChat);
@@ -180,6 +192,8 @@ export function bindUIEvents() {
     // Auto-summary settings
     $('#tv_auto_summary_enabled').on('change', onAutoSummaryToggle);
     $('#tv_auto_summary_interval').on('change', onAutoSummaryIntervalChange);
+    $('#tv_summary_keep_recent').on('change', onSummaryKeepRecentChange);
+    $('#tv_summarize_opening_messages').on('change', onSummarizeOpeningMessagesToggle);
     $('#tv_auto_hide_summarized').on('change', onAutoHideSummarizedToggle);
     $('#tv_passthrough_constant').on('change', onPassthroughConstantToggle);
     $('#tv_allow_keyword_triggers').on('change', onAllowKeywordTriggersToggle);
@@ -370,6 +384,10 @@ export function refreshUI() {
     $('#tv_vector_dedup').prop('checked', dedupEnabled);
     $('#tv_dedup_threshold_row').toggle(dedupEnabled);
     $('#tv_dedup_threshold').val(settings.vectorDedupThreshold ?? 0.85);
+    $('#tv_trigram_threshold_row').toggle(dedupEnabled);
+    $('#tv_trigram_threshold').val(settings.trigramDedupThreshold ?? 0.6);
+    $('#tv_dedup_mode_row').toggle(dedupEnabled);
+    $('#tv_remember_dedup_mode').val(settings.rememberDedupMode || 'warn');
     updateDedupStatus(dedupEnabled);
 
     // Sync mandatory tool calls & prompt injection
@@ -403,6 +421,8 @@ export function refreshUI() {
     $('#tv_auto_summary_enabled').prop('checked', autoEnabled);
     $('#tv_auto_summary_options').toggle(autoEnabled);
     $('#tv_auto_summary_interval').val(settings.autoSummaryInterval ?? 20);
+    $('#tv_summary_keep_recent').val(settings.summaryKeepRecent ?? 2);
+    $('#tv_summarize_opening_messages').prop('checked', settings.summarizeOpeningMessages === true);
     $('#tv_auto_summary_count').text(getAutoSummaryCount());
     $('#tv_auto_hide_summarized').prop('checked', settings.autoHideSummarized !== false);
     $('#tv_passthrough_constant').prop('checked', settings.passthroughConstant !== false);
@@ -474,6 +494,144 @@ function onLorebookFilter() {
     $('#tv_lorebook_list .tv-lorebook-card').each(function () {
         const bookName = $(this).attr('data-book')?.toLowerCase() || '';
         $(this).toggle(!query || bookName.includes(query));
+    });
+}
+
+// Whether the panel is currently filtered. Used to snapshot the drawers' open
+// state on the way in, so clearing the box can put the panel back the way the
+// user had it rather than leaving everything expanded.
+let advSearchActive = false;
+
+function isDrawerOpen($drawer) {
+    return $drawer.find('> .inline-drawer-header .inline-drawer-icon').hasClass('up');
+}
+
+// Open or close a drawer without animating it. SillyTavern's own delegated
+// handler *toggles* the chevron classes, which is right for a click but wrong
+// here: filtering re-asserts the same state on every keystroke, so this sets
+// the classes instead — running it twice must not flip the chevron back.
+// .stop(true, true) finishes any slide already in flight, so a click landing
+// mid-filter can't leave the drawer half-open.
+function setDrawerOpen($drawer, open) {
+    $drawer.find('> .inline-drawer-content').stop(true, true).toggle(open);
+    $drawer.find('> .inline-drawer-header .inline-drawer-icon')
+        .toggleClass('up fa-circle-chevron-up', open)
+        .toggleClass('down fa-circle-chevron-down', !open);
+}
+
+// Collapsed Tree Depth is shown only in collapsed search mode, and that
+// visibility belongs to refreshUI/onSearchModeChange. The filter must not
+// reveal it, or searching would turn on a section the settings say is off.
+function isSectionSelectable($section) {
+    if ($section.attr('id') !== 'tv_collapsed_depth_section') return true;
+    return (getSettings().searchMode || 'traversal') === 'collapsed';
+}
+
+function sectionMatches($section, query) {
+    if ($section.text().toLowerCase().includes(query)) return true;
+    // Placeholders are attributes, so .text() never sees them, and several
+    // settings are identifiable mainly by their example value.
+    return $section.find('[placeholder]').toArray().some(
+        el => (el.getAttribute('placeholder') || '').toLowerCase().includes(query));
+}
+
+/**
+ * Move any section that is not inside a category to the bottom of the panel.
+ *
+ * The categories are plain markup, so a section only joins one by being written
+ * inside it. Anything else is left ungrouped ON PURPOSE rather than being swept
+ * into a catch-all: sitting outside the categories may well be deliberate, and
+ * inventing an "Other" drawer would override that choice. Collecting them at the
+ * bottom just stops an ungrouped section appearing between two categories, where
+ * it reads as though it belongs to one of them.
+ *
+ * Ungrouped sections are still searchable — see onAdvancedFilter.
+ *
+ * Note `.tv-adv-section` is matched as a class token, so `.tv-adv-section-title`
+ * elements are not selected.
+ */
+function moveUngroupedSectionsToEnd() {
+    const $body = $('.tv-advanced-body');
+    if (!$body.length) return;
+    const $orphans = ungroupedSections($body);
+    if ($orphans.length) $body.append($orphans);
+}
+
+/** Sections that belong to no category. */
+function ungroupedSections($body) {
+    return $body.find('.tv-adv-section').filter(function () {
+        return $(this).closest('.tv-adv-group').length === 0;
+    });
+}
+
+function restoreAdvancedPanel() {
+    const $body = $('.tv-advanced-body');
+    $body.find('.tv-adv-section').show();
+    $('#tv_collapsed_depth_section').toggle((getSettings().searchMode || 'traversal') === 'collapsed');
+    $body.find('.tv-adv-group, .tv-adv-section.inline-drawer').each(function () {
+        const $drawer = $(this);
+        const wasOpen = $drawer.data('tvPreSearchOpen');
+        if (wasOpen !== undefined) setDrawerOpen($drawer, wasOpen);
+        $drawer.removeData('tvPreSearchOpen');
+    });
+}
+
+// Filter the advanced panel by section title and body text. Categories start
+// collapsed, so find-in-page can't reach a setting whose category the user
+// can't name — which is the problem this box exists to solve. A matched
+// section is force-opened for the same reason: a hit in help text inside a
+// closed drawer would still be invisible.
+function onAdvancedFilter() {
+    const query = ($('#tv_adv_search').val() || '').toLowerCase().trim();
+    const $body = $('.tv-advanced-body');
+
+    $('#tv_adv_search_clear').toggleClass('tv-visible', query.length > 0);
+
+    if (!query) {
+        if (advSearchActive) {
+            restoreAdvancedPanel();
+            advSearchActive = false;
+        }
+        return;
+    }
+
+    if (!advSearchActive) {
+        $body.find('.tv-adv-group, .tv-adv-section.inline-drawer').each(function () {
+            $(this).data('tvPreSearchOpen', isDrawerOpen($(this)));
+        });
+        advSearchActive = true;
+    }
+
+    $body.find('.tv-adv-group').each(function () {
+        const $group = $(this);
+        // A category title match shows everything under it, so a user who does
+        // remember the category gets the whole group rather than nothing.
+        const groupHit = $group.find('> .tv-adv-group-title').text().toLowerCase().includes(query);
+        let hits = 0;
+
+        $group.find('.tv-adv-section').each(function () {
+            const $section = $(this);
+            const hit = (groupHit || sectionMatches($section, query)) && isSectionSelectable($section);
+            $section.toggle(hit);
+            if (!hit) return;
+            hits++;
+            if ($section.hasClass('inline-drawer')) setDrawerOpen($section, true);
+        });
+
+        // Groups with no hits collapse rather than disappear, so the shape of
+        // the panel stays legible while filtered.
+        setDrawerOpen($group, hits > 0);
+    });
+
+    // Ungrouped sections are filtered too. Without this they are never visited —
+    // the loop above only reaches sections inside a category — so an ungrouped
+    // section would sit there fully visible while everything else filtered away,
+    // which reads as the filter being broken.
+    ungroupedSections($body).each(function () {
+        const $section = $(this);
+        const hit = sectionMatches($section, query) && isSectionSelectable($section);
+        $section.toggle(hit);
+        if (hit && $section.hasClass('inline-drawer')) setDrawerOpen($section, true);
     });
 }
 
@@ -776,6 +934,8 @@ function onVectorDedupToggle() {
     settings.enableVectorDedup = enabled;
     saveSettingsDebounced();
     $('#tv_dedup_threshold_row').toggle(enabled);
+    $('#tv_trigram_threshold_row').toggle(enabled);
+    $('#tv_dedup_mode_row').toggle(enabled);
     updateDedupStatus(enabled);
 }
 
@@ -786,6 +946,25 @@ function onDedupThresholdChange() {
 
     const settings = getSettings();
     settings.vectorDedupThreshold = clamped;
+    saveSettingsDebounced();
+}
+
+function onTrigramThresholdChange() {
+    // Deliberately allows lower values than the cosine threshold: trigram overlap
+    // at 0.85 means "nearly the same string", which reworded duplicates never reach.
+    const raw = Number($('#tv_trigram_threshold').val());
+    const clamped = Math.min(Math.max(raw, 0.2), 0.99);
+    $('#tv_trigram_threshold').val(clamped);
+
+    const settings = getSettings();
+    settings.trigramDedupThreshold = clamped;
+    saveSettingsDebounced();
+}
+
+function onRememberDedupModeChange() {
+    const mode = $('#tv_remember_dedup_mode').val() === 'redirect' ? 'redirect' : 'warn';
+    const settings = getSettings();
+    settings.rememberDedupMode = mode;
     saveSettingsDebounced();
 }
 
@@ -801,7 +980,11 @@ function updateDedupStatus(enabled) {
         return;
     }
     $status.show();
-    $text.text('Using trigram similarity — fast character n-gram matching that catches near-duplicates and morphological variants.');
+    // Name the metric actually in use — the two behave very differently, and a
+    // reworded duplicate only gets caught on the embedding path.
+    $text.text(isEmbeddingAvailable()
+        ? 'Using embedding similarity via the Embedding Sidecar — catches reworded duplicates.'
+        : 'Using trigram similarity — character n-gram matching. Catches near-identical text only; configure an Embedding Sidecar to catch reworded duplicates.');
 }
 
 // ─── Tree Building ───────────────────────────────────────────────
@@ -1029,6 +1212,24 @@ function onAutoSummaryIntervalChange() {
     $('#tv_auto_summary_interval').val(clamped);
     const settings = getSettings();
     settings.autoSummaryInterval = clamped;
+    saveSettingsDebounced();
+}
+
+function onSummaryKeepRecentChange() {
+    const raw = Number($('#tv_summary_keep_recent').val());
+    // Floor of 1: at 0 a summary would hide the whole visible chat, leaving the
+    // model nothing live to continue from.
+    const clamped = Math.min(Math.max(Math.round(raw) || 2, 1), 20);
+    $('#tv_summary_keep_recent').val(clamped);
+    const settings = getSettings();
+    settings.summaryKeepRecent = clamped;
+    saveSettingsDebounced();
+}
+
+function onSummarizeOpeningMessagesToggle() {
+    const enabled = $(this).prop('checked');
+    const settings = getSettings();
+    settings.summarizeOpeningMessages = enabled;
     saveSettingsDebounced();
 }
 

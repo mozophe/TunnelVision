@@ -597,7 +597,7 @@ async function findAndMergeDuplicates(bookName, bookData, chatId) {
           await updateEntry(bookName, keepUid, {
             content: pair.merged_content,
             ...(pair.merged_title ? { comment: pair.merged_title } : {}),
-            _source: "lifecycle",
+            _backgroundSource: "lifecycle",
           });
         }
 
