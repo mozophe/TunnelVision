@@ -60,8 +60,6 @@ let _toolRecursionDepth = 0;
 let _skipPreCommandGeneration = false;
 // Set when the user hits stop while TunnelVision holds ST's GENERATION_STARTED await.
 let _stopRequestedDuringRetrieval = false;
-// Set once the interceptor has cancelled this turn (canary for the trace log).
-let _stoppedThisTurn = false;
 
 let _stateRefreshTimer = null;
 
@@ -75,7 +73,6 @@ let _stateRefreshTimer = null;
 globalThis.TunnelVision_generateInterceptor = function (_chat, _contextSize, abort, _type) {
     if (!_stopRequestedDuringRetrieval) return;
     _stopRequestedDuringRetrieval = false;
-    _stoppedThisTurn = true;
     console.log('[TunnelVision] Stop pressed during retrieval — cancelling the main model request');
     abort(true);
 };
@@ -207,14 +204,13 @@ async function init() {
     // always registered so stop actually cancels the sidecar fetch.
     if (event_types.GENERATION_STOPPED) {
         eventSource.on(event_types.GENERATION_STOPPED, () => {
-            console.debug('[TunnelVision] GENERATION_STOPPED — aborting in-flight sidecar fetches');
             // Aborting our own fetches is not enough: ST's Generate() is parked on the
             // GENERATION_STARTED await we are holding and will carry on to the main
             // request once we return. Remember the stop so the generate interceptor
             // can cancel that request — see TunnelVision_generateInterceptor.
             const inRetrieval = isRetrievalScopeOpen();
             if (inRetrieval) _stopRequestedDuringRetrieval = true;
-            console.log(`[TunnelVision][stop-trace] stop received — retrievalScopeOpen=${inRetrieval}`);
+            console.debug(`[TunnelVision] GENERATION_STOPPED — aborting in-flight sidecar fetches (duringRetrieval=${inRetrieval})`);
             abortSidecarFetches();
         });
     }
@@ -941,9 +937,6 @@ function convertToolChoiceToAnthropicFormat(toolChoice) {
  * { type: { type: "auto" } }) and strip tools from ST's server-side filter.
  */
 function onChatCompletionSettingsReady(data) {
-    if (_stoppedThisTurn) {
-        console.warn('[TunnelVision][stop-trace] request still being assembled after the interceptor aborted — the abort did not take');
-    }
     if (!_generationInProgress) return;
 
     // OOC turns must not expose TunnelVision tools to the model. Keep tools
@@ -1009,7 +1002,6 @@ async function onGenerationStarted(type, opts, dryRun) {
     if (dryRun) return;
     // Drop any stale request from a turn that never reached GENERATION_AFTER_COMMANDS.
     _stopRequestedDuringRetrieval = false;
-    _stoppedThisTurn = false;
 
     if (isPendingSlashCommandGeneration(type)) {
         _skipTunnelVisionForOoc = false;
