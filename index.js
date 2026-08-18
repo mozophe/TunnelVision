@@ -42,7 +42,7 @@ import { abortSidecarFetches, isRetrievalScopeOpen } from './llm-sidecar.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
-import { isOocTurn, isOocUserTurn, suppressTunnelVisionTools } from './turn-classification.js';
+import { isOocTurn, isOocUserTurn, suppressTunnelVisionWriteTools } from './turn-classification.js';
 
 const EXTENSION_NAME = 'tunnelvision';
 const EXTENSION_FOLDER = `third-party/TunnelVision`;
@@ -942,12 +942,13 @@ function convertToolChoiceToAnthropicFormat(toolChoice) {
 function onChatCompletionSettingsReady(data) {
     if (!_generationInProgress) return;
 
-    // OOC turns must not expose TunnelVision tools to the model. Keep tools
-    // registered globally for subsequent turns, but remove only TV definitions
-    // from this request so tools belonging to other extensions still work.
+    // An OOC turn still gets retrieved lorebook context, but must not be able to
+    // write. Strip TunnelVision's writing tools from this one request, keeping
+    // the read-only ones and any tool belonging to another extension. Tools stay
+    // registered globally so the next in-character turn is unaffected.
     if (_skipTunnelVisionForOoc) {
-        suppressTunnelVisionTools(data);
-        console.debug('[TunnelVision] OOC turn — removed TunnelVision tools from API request');
+        const removed = suppressTunnelVisionWriteTools(data);
+        console.debug(`[TunnelVision] OOC turn — removed ${removed} TunnelVision write tool(s) from API request`);
         return;
     }
 
@@ -1044,30 +1045,14 @@ async function onGenerationStarted(type, opts, dryRun) {
 
     const settings = getSettings();
 
+    // An OOC aside is a question *about* the story, so retrieval still runs and
+    // the model still gets its lorebook context. Only writing is suppressed:
+    // the write tools are stripped from the request (onChatCompletionSettingsReady),
+    // the "you MUST call a tool" instruction is withheld below, and every
+    // post-turn writer returns early on MESSAGE_RECEIVED.
     _skipTunnelVisionForOoc = isOocTurn(context.chat, getPendingUserInput());
     if (_skipTunnelVisionForOoc) {
-        _toolRecursionDepth = 0;
-        window.TunnelVision_isRecursiveToolPass = false;
-        window.TunnelVision_toolRecursionDepth = 0;
-        resetNotebookWriteGuard();
-        resetSearchLoopTracker();
-        resetSelectiveRetrievalTracker();
-
-        const mandatoryPosition = mapPositionSetting(settings.mandatoryPromptPosition);
-        const mandatoryRoleSetting = (settings.mandatoryPromptPosition === 'in_chat' && settings.mandatoryPromptRole === 'user')
-            ? 'system' : settings.mandatoryPromptRole;
-        const mandatoryRole = mapRoleSetting(mandatoryRoleSetting);
-        setExtensionPrompt(TV_PROMPT_KEY, '', mandatoryPosition, settings.mandatoryPromptDepth ?? 1, false, mandatoryRole);
-
-        const notebookPosition = mapPositionSetting(settings.notebookPromptPosition);
-        const notebookRoleSetting = (settings.notebookPromptPosition === 'in_chat' && settings.notebookPromptRole === 'user')
-            ? 'system' : settings.notebookPromptRole;
-        const notebookRole = mapRoleSetting(notebookRoleSetting);
-        setExtensionPrompt(TV_NOTEBOOK_KEY, '', notebookPosition, settings.notebookPromptDepth ?? 1, false, notebookRole);
-        clearRetrievalPrompt(settings);
-
-        console.log('[TunnelVision] OOC user message detected — skipping TunnelVision for this turn');
-        return;
+        console.log('[TunnelVision] OOC turn — retrieval still runs, writes suppressed');
     }
 
     // On recursive passes, clear the mandatory tool prompt so the model isn't
@@ -1123,6 +1108,7 @@ async function onGenerationStarted(type, opts, dryRun) {
 
     if (
         settings.globalEnabled !== false
+        && !_skipTunnelVisionForOoc
         && settings.mandatoryTools
         && ToolManager.canPerformToolCalls(type)
         && runtimeState?.activeBooks?.length > 0

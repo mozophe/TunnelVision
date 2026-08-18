@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isOocMessage, isOocTurn, isOocUserTurn, suppressTunnelVisionTools } from '../turn-classification.js';
+import { isOocMessage, isOocTurn, isOocUserTurn, suppressTunnelVisionWriteTools } from '../turn-classification.js';
 
 describe('OOC turn classification', () => {
     it.each([
@@ -60,20 +60,43 @@ describe('OOC turn classification', () => {
 });
 
 describe('OOC request tool suppression', () => {
-    it('removes only TunnelVision tools and preserves other extensions', () => {
+    it('keeps read-only Search, drops TunnelVision writers, preserves other extensions', () => {
         const request = {
             tools: [
                 { type: 'function', function: { name: 'TunnelVision_Search' } },
                 { type: 'function', function: { name: 'Weather_Search' } },
                 { name: 'TunnelVision_Guide' },
+                { type: 'function', function: { name: 'TunnelVision_Remember' } },
             ],
+        };
+
+        expect(suppressTunnelVisionWriteTools(request)).toBe(2);
+        expect(request.tools).toEqual([
+            { type: 'function', function: { name: 'TunnelVision_Search' } },
+            { type: 'function', function: { name: 'Weather_Search' } },
+        ]);
+    });
+
+    it('leaves a tool_choice that survived the strip alone', () => {
+        const request = {
+            tools: [{ type: 'function', function: { name: 'TunnelVision_Search' } }],
             tool_choice: { type: 'function', function: { name: 'TunnelVision_Search' } },
         };
 
-        expect(suppressTunnelVisionTools(request)).toBe(2);
-        expect(request.tools).toEqual([
-            { type: 'function', function: { name: 'Weather_Search' } },
-        ]);
+        expect(suppressTunnelVisionWriteTools(request)).toBe(0);
+        expect(request.tool_choice).toEqual({ type: 'function', function: { name: 'TunnelVision_Search' } });
+    });
+
+    it('falls back to auto when the chosen tool was a writer that got removed', () => {
+        const request = {
+            tools: [
+                { type: 'function', function: { name: 'TunnelVision_Remember' } },
+                { type: 'function', function: { name: 'Weather_Search' } },
+            ],
+            tool_choice: { type: 'function', function: { name: 'TunnelVision_Remember' } },
+        };
+
+        expect(suppressTunnelVisionWriteTools(request)).toBe(1);
         expect(request.tool_choice).toBe('auto');
     });
 
@@ -83,7 +106,7 @@ describe('OOC request tool suppression', () => {
             tool_choice: 'required',
         };
 
-        expect(suppressTunnelVisionTools(request)).toBe(1);
+        expect(suppressTunnelVisionWriteTools(request)).toBe(1);
         expect(request.tools).toBeUndefined();
         expect(request.tool_choice).toBe('none');
     });

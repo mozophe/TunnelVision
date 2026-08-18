@@ -45,27 +45,36 @@ export function isOocTurn(chat, pendingUserInput = '') {
 }
 
 /**
- * Remove TunnelVision function definitions from one chat-completion request
- * while preserving tools registered by SillyTavern or other extensions.
+ * TunnelVision_Search only reads the lorebook, so it stays available on an OOC
+ * turn — answering "how old is she again?" is exactly what it is for. Every
+ * other TunnelVision tool mutates stored memory.
+ */
+const OOC_SAFE_TOOLS = new Set(['TunnelVision_Search']);
+
+/**
+ * Remove TunnelVision's *writing* function definitions from one chat-completion
+ * request, leaving the read-only ones plus any tool registered by SillyTavern or
+ * another extension.
  *
  * @param {Object} data
  * @returns {number} number of removed TunnelVision tools
  */
-export function suppressTunnelVisionTools(data) {
+export function suppressTunnelVisionWriteTools(data) {
     if (!data || typeof data !== 'object') return 0;
 
     const tools = Array.isArray(data.tools) ? data.tools : [];
     const remaining = tools.filter(tool => {
-        const name = tool?.function?.name || tool?.name || '';
-        return !String(name).startsWith('TunnelVision_');
+        const name = String(tool?.function?.name || tool?.name || '');
+        return !name.startsWith('TunnelVision_') || OOC_SAFE_TOOLS.has(name);
     });
     const removed = tools.length - remaining.length;
 
     if (remaining.length > 0) data.tools = remaining;
     else delete data.tools;
 
-    const chosenName = data.tool_choice?.function?.name || data.tool_choice?.name || '';
-    if (String(chosenName).startsWith('TunnelVision_') || (!data.tools && data.tool_choice === 'required')) {
+    const chosenName = String(data.tool_choice?.function?.name || data.tool_choice?.name || '');
+    const chosenRemoved = chosenName.startsWith('TunnelVision_') && !OOC_SAFE_TOOLS.has(chosenName);
+    if (chosenRemoved || (!data.tools && data.tool_choice === 'required')) {
         data.tool_choice = data.tools ? 'auto' : 'none';
     }
 
