@@ -805,7 +805,7 @@ function updateIngestCounts() {
         text = `<strong>Nothing to ingest</strong> in ${from}-${to} — all ${total} message${total === 1 ? ' is' : 's are'} ${skipped.join(', ')}.`;
         if (hidden && !includeHidden) text += ' Tick "Include hidden messages" to read them.';
     } else {
-        text = `<strong>${ingestable}</strong> of ${total} messages (${from}-${to}) will be ingested`;
+        text = `${ingestable} of ${total} messages (${from}-${to}) will be ingested`;
         if (skipped.length) text += ` — skipping ${skipped.join(', ')}`;
     }
 
