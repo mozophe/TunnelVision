@@ -34,7 +34,7 @@ import {
     setBookInjectionMode,
     SETTING_DEFAULTS,
 } from './tree-store.js';
-import { buildTreeFromMetadata, buildTreeWithLLM, generateSummariesForTree, ingestChatMessages } from './tree-builder.js';
+import { buildTreeFromMetadata, buildTreeWithLLM, generateSummariesForTree, ingestChatMessages, getIngestText } from './tree-builder.js';
 import { testSidecarConnectivity, testEmbeddingConnectivity } from './llm-sidecar.js';
 import { isEmbeddingAvailable } from './embedding-cache.js';
 import { registerTools, unregisterTools, getDefaultToolDescriptions, stripDynamicContent } from './tool-registry.js';
@@ -171,6 +171,8 @@ export function bindUIEvents() {
 
     // Chat ingest
     $('#tv_ingest_chat').on('click', onIngestChat);
+    $('#tv_ingest_hidden').on('change', onIngestHiddenToggle);
+    $('#tv_ingest_from, #tv_ingest_to').on('input', updateIngestCounts);
 
     // Mandatory tool calls & prompt injection settings
     $('#tv_mandatory_tools').on('change', onMandatoryToolsToggle);
@@ -747,16 +749,51 @@ function updateIngestUI() {
 
     $('#tv_ingest_container').toggle(hasBook);
 
+    $('#tv_ingest_hidden').prop('checked', !!getSettings().ingestHidden);
+
     if (hasChat) {
         const maxIdx = context.chat.length - 1;
         $('#tv_ingest_to').attr('max', maxIdx).val(maxIdx);
         $('#tv_ingest_from').attr('max', maxIdx);
-        $('#tv_ingest_chat_info').text(`Chat has ${context.chat.length} messages (0-${maxIdx})`);
         $('#tv_ingest_chat').prop('disabled', false);
+        updateIngestCounts();
     } else {
         $('#tv_ingest_chat_info').text('No chat open. Open a chat to ingest messages.');
         $('#tv_ingest_chat').prop('disabled', true);
     }
+}
+
+function onIngestHiddenToggle() {
+    getSettings().ingestHidden = $(this).prop('checked');
+    saveSettingsDebounced();
+    updateIngestCounts();
+}
+
+/**
+ * Report what an ingest over the current range would actually read. The raw chat
+ * length counts hidden messages, so on its own it implies TunnelVision sees far
+ * more of the chat than it does.
+ */
+function updateIngestCounts() {
+    const chat = getContext().chat;
+    if (!chat?.length) return;
+
+    const maxIdx = chat.length - 1;
+    const from = Math.max(0, Math.min(parseInt($('#tv_ingest_from').val(), 10) || 0, maxIdx));
+    const to = Math.max(from, Math.min(parseInt($('#tv_ingest_to').val(), 10) || 0, maxIdx));
+    const includeHidden = !!getSettings().ingestHidden;
+
+    let ingestable = 0, hidden = 0, skipped = 0;
+    for (let i = from; i <= to; i++) {
+        if (getIngestText(chat[i], includeHidden)) ingestable++;
+        else if (chat[i]?.is_system) hidden++;
+        else skipped++;
+    }
+
+    const parts = [`${ingestable} will be ingested`];
+    if (hidden) parts.push(`${hidden} hidden`);
+    if (skipped) parts.push(`${skipped} empty/media`);
+    $('#tv_ingest_chat_info').text(`Chat has ${chat.length} messages (0-${maxIdx}) · ${parts.join(', ')}`);
 }
 
 function onLorebookToggle() {
