@@ -783,17 +783,23 @@ function updateIngestCounts() {
     const to = Math.max(from, Math.min(parseInt($('#tv_ingest_to').val(), 10) || 0, maxIdx));
     const includeHidden = !!getSettings().ingestHidden;
 
-    let ingestable = 0, hidden = 0, skipped = 0;
+    let ingestable = 0, hidden = 0, media = 0, empty = 0;
     for (let i = from; i <= to; i++) {
-        if (getIngestText(chat[i], includeHidden)) ingestable++;
-        else if (chat[i]?.is_system) hidden++;
-        else skipped++;
+        const msg = chat[i];
+        if (getIngestText(msg, includeHidden)) ingestable++;
+        else if (msg?.is_system) hidden++;
+        else if (msg?.extra?.media?.length || /!\[[^\]]*\]\(|<(img|video|audio)\b/i.test(msg?.mes || '')) media++;
+        else empty++;
     }
 
-    const parts = [`${ingestable} will be ingested`];
-    if (hidden) parts.push(`${hidden} hidden`);
-    if (skipped) parts.push(`${skipped} empty/media`);
-    $('#tv_ingest_chat_info').text(`Chat has ${chat.length} messages (0-${maxIdx}) · ${parts.join(', ')}`);
+    const skipped = [];
+    if (hidden) skipped.push(`${hidden} hidden`);
+    if (media) skipped.push(`${media} image${media === 1 ? '' : 's'}/video${media === 1 ? '' : 's'}`);
+    if (empty) skipped.push(`${empty} empty`);
+
+    const total = to - from + 1;
+    const summary = `Will ingest ${ingestable} of ${total} messages (${from}-${to})`;
+    $('#tv_ingest_chat_info').text(skipped.length ? `${summary} — skipping ${skipped.join(', ')}` : summary);
 }
 
 function onLorebookToggle() {
