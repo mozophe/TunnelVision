@@ -74,6 +74,7 @@ globalThis.TunnelVision_generateInterceptor = function (_chat, _contextSize, abo
     if (!_stopRequestedDuringRetrieval) return;
     _stopRequestedDuringRetrieval = false;
     console.log('[TunnelVision] Stop pressed during retrieval — cancelling the main model request');
+    toastr.info('Retrieval stopped — the reply was not sent.', 'TunnelVision');
     abort(true);
 };
 
