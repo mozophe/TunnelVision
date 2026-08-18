@@ -758,7 +758,7 @@ function updateIngestUI() {
         $('#tv_ingest_chat').prop('disabled', false);
         updateIngestCounts();
     } else {
-        $('#tv_ingest_chat_info').text('No chat open. Open a chat to ingest messages.');
+        $('#tv_ingest_info_text').text('No chat open. Open a chat to ingest messages.');
         $('#tv_ingest_chat').prop('disabled', true);
     }
 }
@@ -797,9 +797,23 @@ function updateIngestCounts() {
     if (media) skipped.push(`${media} image${media === 1 ? '' : 's'}/video${media === 1 ? '' : 's'}`);
     if (empty) skipped.push(`${empty} empty`);
 
+    // Every value below is a parsed integer, so the markup is safe to build by hand.
     const total = to - from + 1;
-    const summary = `Will ingest ${ingestable} of ${total} messages (${from}-${to})`;
-    $('#tv_ingest_chat_info').text(skipped.length ? `${summary} — skipping ${skipped.join(', ')}` : summary);
+    const nothing = ingestable === 0;
+    let text;
+    if (nothing) {
+        text = `<strong>Nothing to ingest</strong> in ${from}-${to} — all ${total} message${total === 1 ? ' is' : 's are'} ${skipped.join(', ')}.`;
+        if (hidden && !includeHidden) text += ' Tick "Include hidden messages" to read them.';
+    } else {
+        text = `<strong>${ingestable}</strong> of ${total} messages (${from}-${to}) will be ingested`;
+        if (skipped.length) text += ` — skipping ${skipped.join(', ')}`;
+    }
+
+    $('#tv_ingest_info_text').html(text);
+    $('#tv_ingest_chat_info').toggleClass('tv-warn-text', nothing);
+    $('#tv_ingest_info_icon')
+        .toggleClass('fa-circle-info', !nothing)
+        .toggleClass('fa-triangle-exclamation', nothing);
 }
 
 function onLorebookToggle() {
