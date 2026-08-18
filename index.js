@@ -60,6 +60,8 @@ let _toolRecursionDepth = 0;
 let _skipPreCommandGeneration = false;
 // Set when the user hits stop while TunnelVision holds ST's GENERATION_STARTED await.
 let _stopRequestedDuringRetrieval = false;
+// stop-trace only: set when we re-issued stopGeneration() for this turn.
+let _stoppedThisTurn = false;
 let _stateRefreshTimer = null;
 
 async function init() {
@@ -195,7 +197,9 @@ async function init() {
             // A stop landing while we hold that await kills only the old controller, so the
             // main request still goes out. Remember it and re-issue the stop from
             // GENERATION_AFTER_COMMANDS, which fires after the new controller exists.
-            if (isRetrievalScopeOpen()) _stopRequestedDuringRetrieval = true;
+            const inRetrieval = isRetrievalScopeOpen();
+            if (inRetrieval) _stopRequestedDuringRetrieval = true;
+            console.log(`[TunnelVision][stop-trace] 1/3 GENERATION_STOPPED — retrievalScopeOpen=${inRetrieval}`);
             abortSidecarFetches();
         });
     }
@@ -922,6 +926,9 @@ function convertToolChoiceToAnthropicFormat(toolChoice) {
  * { type: { type: "auto" } }) and strip tools from ST's server-side filter.
  */
 function onChatCompletionSettingsReady(data) {
+    if (_stoppedThisTurn) {
+        console.warn('[TunnelVision][stop-trace] 3/3 CHAT_COMPLETION_SETTINGS_READY fired AFTER stopGeneration() — ST is still assembling the request');
+    }
     if (!_generationInProgress) return;
 
     // OOC turns must not expose TunnelVision tools to the model. Keep tools
@@ -976,8 +983,10 @@ function onGenerationAfterCommands(_type, _opts, dryRun) {
 
     // Re-abort now that ST has installed the fresh abortController — otherwise the
     // main model request goes through despite the user having pressed stop.
+    console.log(`[TunnelVision][stop-trace] 2/3 GENERATION_AFTER_COMMANDS — pendingStop=${_stopRequestedDuringRetrieval} stopGenerationImported=${typeof stopGeneration}`);
     if (_stopRequestedDuringRetrieval) {
         _stopRequestedDuringRetrieval = false;
+        _stoppedThisTurn = true;
         console.log('[TunnelVision] Stop pressed during retrieval — aborting main generation');
         stopGeneration();
     }
@@ -995,6 +1004,7 @@ async function onGenerationStarted(type, opts, dryRun) {
     if (dryRun) return;
     // Drop any stale request from a turn that never reached GENERATION_AFTER_COMMANDS.
     _stopRequestedDuringRetrieval = false;
+    _stoppedThisTurn = false;
 
     if (isPendingSlashCommandGeneration(type)) {
         _skipTunnelVisionForOoc = false;
