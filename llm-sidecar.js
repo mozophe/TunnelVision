@@ -44,6 +44,9 @@ export function beginRetrievalScope() { _retrievalScopeDepth++; }
 /** Mark the end of retrieval network work. Floors at 0 so it can't underflow. */
 export function endRetrievalScope() { _retrievalScopeDepth = Math.max(0, _retrievalScopeDepth - 1); }
 
+/** True while retrieval network work is in flight (ST is blocked on our handler). */
+export function isRetrievalScopeOpen() { return _retrievalScopeDepth > 0; }
+
 /** Abort every in-flight retrieval fetch. Called when the user stops generation. */
 export function abortSidecarFetches() {
     for (const controller of _activeFetches) controller.abort();

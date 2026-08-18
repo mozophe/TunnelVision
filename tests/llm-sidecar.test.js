@@ -442,7 +442,7 @@ describe('sidecarGenerate', () => {
 
 // ── abortSidecarFetches ──────────────────────────────────────────
 
-import { abortSidecarFetches, beginRetrievalScope, endRetrievalScope } from '../llm-sidecar.js';
+import { abortSidecarFetches, beginRetrievalScope, endRetrievalScope, isRetrievalScopeOpen } from '../llm-sidecar.js';
 
 describe('abortSidecarFetches', () => {
     // A fetch that never resolves on its own — it only settles when its
@@ -811,5 +811,24 @@ describe('testEmbeddingConnectivity', () => {
         expect(result.message).toContain('Connection failed');
 
         vi.unstubAllGlobals();
+    });
+});
+
+// ── isRetrievalScopeOpen ─────────────────────────────────────────
+// Gates the "stop pressed during retrieval" flag in index.js: a stop that lands
+// while the scope is open must re-abort ST's freshly created abortController,
+// while a stop outside the scope (mid-stream, or during a sidecar writer) must not.
+describe('isRetrievalScopeOpen', () => {
+    it('is true only between begin and end, and survives nesting', () => {
+        expect(isRetrievalScopeOpen()).toBe(false);
+        beginRetrievalScope();
+        expect(isRetrievalScopeOpen()).toBe(true);
+        beginRetrievalScope();
+        endRetrievalScope();
+        expect(isRetrievalScopeOpen()).toBe(true);
+        endRetrievalScope();
+        expect(isRetrievalScopeOpen()).toBe(false);
+        endRetrievalScope(); // underflow guard
+        expect(isRetrievalScopeOpen()).toBe(false);
     });
 });

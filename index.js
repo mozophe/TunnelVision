@@ -18,7 +18,7 @@
  *   auto-summary.js — Automatic summary injection every N messages.
  */
 
-import { eventSource, event_types, extension_prompt_types, extension_prompt_roles, setExtensionPrompt, saveSettingsDebounced, saveChatConditional, main_api } from '../../../../script.js';
+import { eventSource, event_types, extension_prompt_types, extension_prompt_roles, setExtensionPrompt, saveSettingsDebounced, saveChatConditional, main_api, stopGeneration } from '../../../../script.js';
 import { getContext } from '../../../st-context.js';
 import { ToolManager } from '../../../tool-calling.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
@@ -37,7 +37,7 @@ import { initSmartContext } from './smart-context.js';
 import { initMemoryLifecycle } from './memory-lifecycle.js';
 import { runSidecarRetrieval, clearRetrievalPrompt } from './sidecar-retrieval.js';
 import { runSidecarWriter, revertMessageSnapshots, revertInvalidSnapshots, hydrateSnapshots } from './sidecar-writer.js';
-import { abortSidecarFetches } from './llm-sidecar.js';
+import { abortSidecarFetches, isRetrievalScopeOpen } from './llm-sidecar.js';
 import { separateConditions, isEvaluableCondition, formatCondition, EVALUABLE_TYPES, CONDITION_LABELS, getKeywordProbability, setKeywordProbability } from './conditions.js';
 import { loadWorldInfo, saveWorldInfo, world_names, deleteWorldInfoEntry, deleteWIOriginalDataValue } from '../../../world-info.js';
 import { findEntryByUid } from './entry-manager.js';
@@ -58,6 +58,8 @@ let _skipTunnelVisionForOoc = false;
 // so we mirror it here to know when we're on the final pass.
 let _toolRecursionDepth = 0;
 let _skipPreCommandGeneration = false;
+// Set when the user hits stop while TunnelVision holds ST's GENERATION_STARTED await.
+let _stopRequestedDuringRetrieval = false;
 let _stateRefreshTimer = null;
 
 async function init() {
@@ -188,6 +190,12 @@ async function init() {
     if (event_types.GENERATION_STOPPED) {
         eventSource.on(event_types.GENERATION_STOPPED, () => {
             console.debug('[TunnelVision] GENERATION_STOPPED — aborting in-flight sidecar fetches');
+            // ST's Generate() replaces the global abortController immediately after the
+            // awaited GENERATION_STARTED emit (script.js: `abortController = new AbortController()`).
+            // A stop landing while we hold that await kills only the old controller, so the
+            // main request still goes out. Remember it and re-issue the stop from
+            // GENERATION_AFTER_COMMANDS, which fires after the new controller exists.
+            if (isRetrievalScopeOpen()) _stopRequestedDuringRetrieval = true;
             abortSidecarFetches();
         });
     }
@@ -965,6 +973,14 @@ function getPendingUserInput() {
 function onGenerationAfterCommands(_type, _opts, dryRun) {
     if (dryRun) return;
     _skipPreCommandGeneration = false;
+
+    // Re-abort now that ST has installed the fresh abortController — otherwise the
+    // main model request goes through despite the user having pressed stop.
+    if (_stopRequestedDuringRetrieval) {
+        _stopRequestedDuringRetrieval = false;
+        console.log('[TunnelVision] Stop pressed during retrieval — aborting main generation');
+        stopGeneration();
+    }
 }
 
 /**
@@ -977,6 +993,8 @@ async function onGenerationStarted(type, opts, dryRun) {
     // Do NOT set _generationInProgress on dry runs: they never fire MESSAGE_RECEIVED or
     // GENERATION_ENDED to clear it, so it would stay true forever and block tool re-registration.
     if (dryRun) return;
+    // Drop any stale request from a turn that never reached GENERATION_AFTER_COMMANDS.
+    _stopRequestedDuringRetrieval = false;
 
     if (isPendingSlashCommandGeneration(type)) {
         _skipTunnelVisionForOoc = false;
