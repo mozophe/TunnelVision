@@ -18,7 +18,7 @@
  *   auto-summary.js — Automatic summary injection every N messages.
  */
 
-import { eventSource, event_types, extension_prompt_types, extension_prompt_roles, setExtensionPrompt, saveSettingsDebounced, saveChatConditional, main_api, stopGeneration } from '../../../../script.js';
+import { eventSource, event_types, extension_prompt_types, extension_prompt_roles, setExtensionPrompt, saveSettingsDebounced, saveChatConditional, main_api } from '../../../../script.js';
 import { getContext } from '../../../st-context.js';
 import { ToolManager } from '../../../tool-calling.js';
 import { renderExtensionTemplateAsync } from '../../../extensions.js';
@@ -60,9 +60,25 @@ let _toolRecursionDepth = 0;
 let _skipPreCommandGeneration = false;
 // Set when the user hits stop while TunnelVision holds ST's GENERATION_STARTED await.
 let _stopRequestedDuringRetrieval = false;
-// stop-trace only: set when we re-issued stopGeneration() for this turn.
+// Set once the interceptor has cancelled this turn (canary for the trace log).
 let _stoppedThisTurn = false;
+
 let _stateRefreshTimer = null;
+
+// ST's supported cancel hook: registered via manifest.generate_interceptor and
+// called as globalThis[key](chat, contextSize, abort, type) from Generate()
+// (script.js: `const aborted = await runGenerationInterceptors(...)`). Calling
+// abort(true) makes Generate return before it builds any request — the only
+// point in the pipeline where an extension can stop the main model cleanly.
+// Aborting ST's abortController from GENERATION_STOPPED does not: Generate
+// replaces it right after the GENERATION_STARTED await it was blocked on.
+globalThis.TunnelVision_generateInterceptor = function (_chat, _contextSize, abort, _type) {
+    if (!_stopRequestedDuringRetrieval) return;
+    _stopRequestedDuringRetrieval = false;
+    _stoppedThisTurn = true;
+    console.log('[TunnelVision] Stop pressed during retrieval — cancelling the main model request');
+    abort(true);
+};
 
 async function init() {
     // Ensure settings exist
@@ -192,14 +208,13 @@ async function init() {
     if (event_types.GENERATION_STOPPED) {
         eventSource.on(event_types.GENERATION_STOPPED, () => {
             console.debug('[TunnelVision] GENERATION_STOPPED — aborting in-flight sidecar fetches');
-            // ST's Generate() replaces the global abortController immediately after the
-            // awaited GENERATION_STARTED emit (script.js: `abortController = new AbortController()`).
-            // A stop landing while we hold that await kills only the old controller, so the
-            // main request still goes out. Remember it and re-issue the stop from
-            // GENERATION_AFTER_COMMANDS, which fires after the new controller exists.
+            // Aborting our own fetches is not enough: ST's Generate() is parked on the
+            // GENERATION_STARTED await we are holding and will carry on to the main
+            // request once we return. Remember the stop so the generate interceptor
+            // can cancel that request — see TunnelVision_generateInterceptor.
             const inRetrieval = isRetrievalScopeOpen();
             if (inRetrieval) _stopRequestedDuringRetrieval = true;
-            console.log(`[TunnelVision][stop-trace] 1/3 GENERATION_STOPPED — retrievalScopeOpen=${inRetrieval}`);
+            console.log(`[TunnelVision][stop-trace] stop received — retrievalScopeOpen=${inRetrieval}`);
             abortSidecarFetches();
         });
     }
@@ -927,7 +942,7 @@ function convertToolChoiceToAnthropicFormat(toolChoice) {
  */
 function onChatCompletionSettingsReady(data) {
     if (_stoppedThisTurn) {
-        console.warn('[TunnelVision][stop-trace] 3/3 CHAT_COMPLETION_SETTINGS_READY fired AFTER stopGeneration() — ST is still assembling the request');
+        console.warn('[TunnelVision][stop-trace] request still being assembled after the interceptor aborted — the abort did not take');
     }
     if (!_generationInProgress) return;
 
@@ -980,16 +995,6 @@ function getPendingUserInput() {
 function onGenerationAfterCommands(_type, _opts, dryRun) {
     if (dryRun) return;
     _skipPreCommandGeneration = false;
-
-    // Re-abort now that ST has installed the fresh abortController — otherwise the
-    // main model request goes through despite the user having pressed stop.
-    console.log(`[TunnelVision][stop-trace] 2/3 GENERATION_AFTER_COMMANDS — pendingStop=${_stopRequestedDuringRetrieval} stopGenerationImported=${typeof stopGeneration}`);
-    if (_stopRequestedDuringRetrieval) {
-        _stopRequestedDuringRetrieval = false;
-        _stoppedThisTurn = true;
-        console.log('[TunnelVision] Stop pressed during retrieval — aborting main generation');
-        stopGeneration();
-    }
 }
 
 /**
