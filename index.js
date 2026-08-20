@@ -51,7 +51,7 @@ const EXTENSION_FOLDER = `third-party/TunnelVision`;
 // (lorebook saves from tool actions trigger this event mid-generation).
 let _generationInProgress = false;
 // True from the start of an OOC generation until its response event finishes.
-// Used to suppress both prompt-time retrieval and post-response memory writes.
+// Retrieval still runs; this suppresses only the write paths.
 let _skipTunnelVisionForOoc = false;
 
 // Tracks recursion depth for tool-call passes within a single generation turn.
@@ -1004,7 +1004,7 @@ async function onGenerationStarted(type, opts, dryRun) {
     // Do NOT set _generationInProgress on dry runs: they never fire MESSAGE_RECEIVED or
     // GENERATION_ENDED to clear it, so it would stay true forever and block tool re-registration.
     if (dryRun) return;
-    // Drop any stale request from a turn that never reached GENERATION_AFTER_COMMANDS.
+    // Drop any stale request from a turn that never reached the generate interceptor.
     _stopRequestedDuringRetrieval = false;
 
     if (isPendingSlashCommandGeneration(type)) {
