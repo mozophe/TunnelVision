@@ -27,7 +27,7 @@ What remains here is not yet upstream:
 | Area | What changed |
 |------|--------------|
 | 🪄 **One-click chat setup** | A **Create Chat Lorebook** button creates a lorebook, attaches it to the open chat and turns TunnelVision on for it. If the character came with its own lorebook, it offers to use that one too, read-only, and to build its tree. See [Setup](#-installation--setup). |
-| 🔄 **The lorebook list stays current** | A newly created, imported or attached lorebook used to appear only after a page reload, and so did the Ingest section after turning a book on. Both now update straight away. The auto-detect help text shows `{{char}}` again instead of "SillyTavern System". |
+| 🔄 **The lorebook list stays current** | A newly created, imported or attached lorebook used to appear only after a page reload, and so did the **Chat Ingest** section after switching on **Enable for this lorebook**. Both now update straight away. The auto-detect help text shows `{{char}}` again instead of "SillyTavern System". |
 | 🔁 **Swipes get memorized** | Swiping reverted the old reply's memories but never ran the writer for the new one, so that turn ended up with no memory at all. The writer now runs on swipes, drops its output if the message changed while it ran, and runs again for a swipe that lands mid-run. |
 | 📥 **Ingest can read hidden messages** | An **Include hidden messages** toggle, image/video skipping and a live count of what will be read. See [User Commands](#-user-commands-the-remote-control). |
 | 📱 **The tree editor works on a phone** | Assigning an entry to a category was drag-and-drop only, and HTML5 drag events never fire from touch — so on a phone there was no way to do the editor's main job. See below. |
