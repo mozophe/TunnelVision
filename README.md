@@ -454,8 +454,9 @@ https://github.com/Coneja-Chibi/TunnelVision
 
    A **Build Tree Index** dropdown appears only if at least one of these books
    has never had a tree built. Your choice applies only to those books — a book
-   that already has a tree (say, from an earlier chat) keeps it and is never
-   rebuilt here:
+   that already has a tree (say, from an earlier chat) is marked **(has a
+   tree)**, keeps it, and is never rebuilt here. The dropdown is greyed out
+   unless a ticked book still needs a tree:
    - **With LLM**: sorts entries into categories with summaries (better retrieval, costs tokens)
    - **From Metadata**: groups entries by their existing groups and keys (instant, no LLM calls)
    - **Later**: select the book in TunnelVision's lorebook list and use its **Build Tree Index** section yourself
