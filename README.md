@@ -17,20 +17,20 @@
 
 Most of what this fork used to carry has since been merged upstream — per-chat
 lorebooks, self-contained sidecar API config, snapshot undo/cleanup, activity
-feed ordering, `tv_tracker` keywords and the dedup/summary work all live in
+feed ordering, `tv_tracker` keywords, the dedup/summary work, stop-cancels-retrieval
+([#46](https://github.com/Coneja-Chibi/TunnelVision/pull/46)), read-only OOC turns
+([#48](https://github.com/Coneja-Chibi/TunnelVision/pull/48)) and the OpenRouter
+origin fix ([#49](https://github.com/Coneja-Chibi/TunnelVision/pull/49)) all live in
 [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision) now.
-What remains here are three behaviours not yet upstream:
+What remains here is not yet upstream:
 
 | Area | What changed |
 |------|--------------|
-| ⏹️ **Stop actually stops** | ST hides its stop button until *after* sidecar retrieval, so a retrieval couldn't be interrupted and the reply was sent regardless. The button is now revealed for the duration, and pressing it cancels the retrieval *and* the main model request. ([#46](https://github.com/Coneja-Chibi/TunnelVision/pull/46)) |
-| 💬 **OOC turns read, don't write** | An OOC aside still gets full lorebook retrieval — it's a question *about* the story — but cannot write. Write tools are stripped from the request, the mandatory-tool instruction is withheld, and every post-turn writer skips the turn. ([#48](https://github.com/Coneja-Chibi/TunnelVision/pull/48)) |
+| 🪄 **One-click chat setup** | A **Create Chat Lorebook** button creates a lorebook, attaches it to the open chat and turns TunnelVision on for it. If the character came with its own lorebook, it offers to use that one too, read-only, and to build its tree. See [Setup](#-installation--setup). |
+| 🔄 **The lorebook list stays current** | A newly created, imported or attached lorebook used to appear only after a page reload, and so did the Ingest section after turning a book on. Both now update straight away. The auto-detect help text shows `{{char}}` again instead of "SillyTavern System". |
+| 🔁 **Swipes get memorized** | Swiping reverted the old reply's memories but never ran the writer for the new one, so that turn ended up with no memory at all. The writer now runs on swipes, drops its output if the message changed while it ran, and runs again for a swipe that lands mid-run. |
+| 📥 **Ingest can read hidden messages** | An **Include hidden messages** toggle, image/video skipping and a live count of what will be read. See [User Commands](#-user-commands-the-remote-control). |
 | 📱 **The tree editor works on a phone** | Assigning an entry to a category was drag-and-drop only, and HTML5 drag events never fire from touch — so on a phone there was no way to do the editor's main job. See below. |
-
-**Recognised OOC markers:** `OOC: ...`, `(OOC: ...)`, `((OOC: ...))`,
-`[OOC: ...]`, `<OOC> ...`, `**OOC** ...` — the literal word must be the first
-token. A bare `[ ... ]` or `(( ... ))` is *not* treated as OOC, since those are
-ordinary action beats and sound effects.
 
 ### 📱 The tree editor on mobile
 
@@ -365,6 +365,18 @@ prompt, so ingest skips them by default — turn it on when older messages were
 hidden to save context and you want them read anyway. Images and videos are
 skipped either way.
 
+### 💬 **OOC Asides** *(Commercial Break)*
+
+A message marked as out-of-character still gets full lorebook retrieval — it's a
+question *about* the story — but it can't write. Write tools are stripped from the
+request, the mandatory-tool instruction is withheld, and every post-turn writer
+skips the turn.
+
+**Recognised OOC markers:** `OOC: ...`, `(OOC: ...)`, `((OOC: ...))`,
+`[OOC: ...]`, `<OOC> ...`, `**OOC** ...` — the literal word must be the first
+token. A bare `[ ... ]` or `(( ... ))` is *not* treated as OOC, since those are
+ordinary action beats and sound effects.
+
 ### 🔄 **Auto-Summary** *(The DVR)*
 
 Configure an interval (e.g., every 20 messages) and TunnelVision will automatically tell the AI "you MUST summarize now." The AI creates a summary of recent events without you lifting a finger.
@@ -412,7 +424,6 @@ One-click diagnostic panel that checks **everything**:
 
 - **SillyTavern** (latest version recommended)
 - **An API that supports tool calling** (Claude, GPT-4, Gemini, etc.)
-- **At least one lorebook** with entries you want TunnelVision to manage
 
 ### Step 1: Install 📥
 
@@ -422,14 +433,37 @@ Paste this URL into SillyTavern's "Install Extension" input:
 https://github.com/Coneja-Chibi/TunnelVision
 ```
 
-### Step 2: Enable & Configure 📡
+### Step 2: Set Up a Chat 📡
 
-1. **🔧 Enable Master Toggle**: Turn on TunnelVision in Extension Settings
-2. **📚 Select Lorebooks**: Check which lorebooks TunnelVision should manage
-3. **🌳 Build Trees**: Click "Build Tree" for each enabled lorebook
-   - **Quick Build**: Metadata-only, instant, no LLM calls
-   - **Build With LLM**: Generates summaries for each channel node (better retrieval, costs tokens)
-4. **✅ Run Diagnostics**: Click "Run Diagnostics" to verify everything is green
+1. **🔧 Enable Master Toggle**: Turn on TunnelVision in Extension Settings.
+2. **🪄 Create Chat Lorebook**: Open a chat and click **Create Chat Lorebook**
+   under *Lorebook Selection*. It suggests a name (`TV - <character>`, then
+   `TV - <character> 2`, …), creates the book, attaches it to this chat, turns
+   TunnelVision on for it and selects it. Every memory TunnelVision saves in
+   this chat goes here. The button is greyed out if the chat already has a chat
+   lorebook, since SillyTavern allows only one.
+3. **📖 Card lorebook** *(only if the character came with one)*: the same popup
+   offers to use it with TunnelVision as well. Leave it ticked — it's set to
+   **Read Only**, so the AI can search the card's lore but never writes chat
+   events into it. If that book has no tree yet, choose how to build one:
+   - **With LLM**: sorts entries into categories with summaries (better retrieval, costs tokens)
+   - **From metadata**: groups entries by their existing groups and keys (instant, no LLM calls)
+   - **Later**: build it yourself from the book's card
+   
+   The tree is saved per book, so later chats with the same character reuse it.
+4. **📥 Existing chat?** With the new book selected, click **Ingest Messages**
+   to pull facts out of the chat so far, then build the chat book's tree with
+   **From Metadata** (free) or **With LLM** (better categories, costs tokens).
+   A brand-new chat needs neither — its book starts with an empty tree and fills
+   up as you play.
+5. **✅ Run Diagnostics**: Click "Run Diagnostics" to verify everything is green.
+
+**Doing it by hand:** attach any lorebook to the chat with SillyTavern's
+passport icon in the character panel (shift-click or long-press it), click the
+book's card in TunnelVision's list, switch it on, and build its tree.
+*Tip:* set **Advanced → Lorebooks & Tree Building → Auto-Detect Lorebooks** to
+`TV - {{char}}` and any lorebook whose name contains `TV - <character>` is
+switched on automatically — you only have to attach it.
 
 ### Step 3: Start Chatting 💬
 
