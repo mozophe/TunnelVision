@@ -950,17 +950,22 @@ async function onCreateChatBook() {
         selectCurrentLorebook(name);
         refreshUI();
 
-        // Shown last so the card-book build toasts don't bury it.
-        const created = `Created "${name}" and attached it to this chat.`;
+        // Shown last so the card-book build toasts don't bury it. HTML is on for
+        // this toast only; every interpolated name goes through escapeHtml.
+        const title = `${escapeHtml(name)} is ready`;
+        let body = 'Attached to this chat, TunnelVision on.';
+        if (chosenCardBooks.length) {
+            body += `<br>Character Lore: ${chosenCardBooks.map(escapeHtml).join(', ')} (read-only)`;
+        }
         const messageCount = getContext().chat?.length || 0;
         if (messageCount > 1) {
-            toastr.success(
-                `${created} Next: under Chat Ingest, click Ingest Messages to pull in the ${messageCount} existing messages. Then, under Build Tree Index, click From Metadata or With LLM.`,
-                'TunnelVision',
-                { timeOut: 10000 },
-            );
+            body += `<br><b>Next steps:</b><ol style="margin: 4px 0 0 18px; padding: 0;">`
+                + `<li>Chat Ingest → <b>Ingest Messages</b> (${messageCount} messages)</li>`
+                + '<li>Build Tree Index → <b>From Metadata</b> or <b>With LLM</b></li></ol>';
+            // A to-do list: keep it until the user closes it.
+            toastr.success(body, title, { escapeHtml: false, timeOut: 0, extendedTimeOut: 0, closeButton: true });
         } else {
-            toastr.success(created, 'TunnelVision');
+            toastr.success(body, title, { escapeHtml: false });
         }
     } catch (e) {
         toastr.error(e.message, 'TunnelVision');
