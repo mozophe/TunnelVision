@@ -450,7 +450,12 @@ https://github.com/Coneja-Chibi/TunnelVision
    globe button, e.g. an embedded lorebook you imported)*: the same popup
    offers to use them with TunnelVision as well. Leave them ticked — they're set to
    **Read Only**, so the AI can search the character's lore but never writes chat
-   events into it. If any of them has no tree yet, pick a **Build Tree Index** option:
+   events into it.
+
+   A **Build Tree Index** dropdown appears only if at least one of these books
+   has never had a tree built. Your choice applies only to those books — a book
+   that already has a tree (say, from an earlier chat) keeps it and is never
+   rebuilt here:
    - **With LLM**: sorts entries into categories with summaries (better retrieval, costs tokens)
    - **From Metadata**: groups entries by their existing groups and keys (instant, no LLM calls)
    - **Later**: select the book in TunnelVision's lorebook list and use its **Build Tree Index** section yourself
