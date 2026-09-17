@@ -792,41 +792,71 @@ async function onCreateChatBook() {
     const hasTree = (b) => { const r = getTree(b)?.root; return !!(r?.children?.length || r?.entryUids?.length); };
     const anyNeedsTree = cardBooks.some(b => !hasTree(b));
 
-    const cardHtml = cardBooks.length ? `
-        <div class="tv-help-text" style="margin-top: 10px; text-align: left;">
-            ${cardBooks.map((b, i) => `
-                <label class="checkbox_label"><input type="checkbox" class="tv-card-book" data-index="${i}" checked />
-                    Also use Character Lore "${escapeHtml(b)}" with TunnelVision (read-only)</label>`).join('')}
-            ${anyNeedsTree ? `
-                <div style="margin: 6px 0 0 22px;">Build Tree Index:
-                    <label><input type="radio" name="tv_card_build" value="llm" checked /> With LLM</label>
-                    <label><input type="radio" name="tv_card_build" value="metadata" /> From Metadata</label>
-                    <label><input type="radio" name="tv_card_build" value="later" /> Later</label>
-                </div>` : ''}
-        </div>` : '';
+    // Built as DOM (not an HTML string) so book names need no escaping and
+    // checkbox state is set as a property.
+    const $content = $(`
+        <div class="tv-create-book">
+            <h3>Create Chat Lorebook</h3>
+            <div class="tv-create-book-body">
+                <label for="tv_create_book_name">Name</label>
+                <input id="tv_create_book_name" class="text_pole" type="text" autofocus />
+                <small class="text_muted">Creates the lorebook, attaches it to this chat and turns TunnelVision on for it.</small>
+                <small class="tv-create-book-error warning" style="display:none;"></small>
+            </div>
+        </div>`);
+    $content.find('#tv_create_book_name').val(defaultName);
 
+    if (cardBooks.length) {
+        const $section = $('<div class="tv-create-book-body"><b>Character Lore</b></div>');
+        cardBooks.forEach((book, i) => {
+            const $label = $('<label class="checkbox_label"><input type="checkbox" class="tv-card-book" /><span></span></label>');
+            $label.find('input').prop('checked', true).attr('data-index', i);
+            $label.find('span').text(book);
+            $section.append($label);
+        });
+        $section.append('<small class="text_muted">Let TunnelVision search these too (read-only, so chat memories never go into them).</small>');
+        if (anyNeedsTree) {
+            $section.append(`
+                <label for="tv_create_book_build">Build Tree Index</label>
+                <select id="tv_create_book_build" class="text_pole">
+                    <option value="llm">With LLM</option>
+                    <option value="metadata">From Metadata</option>
+                    <option value="later">Later</option>
+                </select>
+                <small class="text_muted">With LLM costs tokens · From Metadata is instant · Later: build it from the lorebook list yourself.</small>`);
+            // Nothing to build when every book is unticked.
+            $section.on('change', '.tv-card-book', () => {
+                $section.find('#tv_create_book_build').prop('disabled', !$section.find('.tv-card-book:checked').length);
+            });
+        }
+        $content.append($section);
+    }
+
+    let name = '';
     let chosenCardBooks = [];
     let buildMethod = 'later';
-    const popup = new Popup(
-        `<h3>Create Chat Lorebook</h3><div>Name for the new lorebook:</div>${cardHtml}`,
-        POPUP_TYPE.INPUT,
-        defaultName,
-        {
-            onClosing: (p) => {
-                chosenCardBooks = [...p.dlg.querySelectorAll('.tv-card-book:checked')].map(el => cardBooks[Number(el.dataset.index)]);
-                buildMethod = p.dlg.querySelector('input[name="tv_card_build"]:checked')?.value || 'later';
-                return true;
-            },
+    const popup = new Popup($content[0], POPUP_TYPE.CONFIRM, '', {
+        okButton: 'Create',
+        cancelButton: 'Cancel',
+        onClosing: (p) => {
+            if (p.result !== POPUP_RESULT.AFFIRMATIVE) return true;
+            name = String($content.find('#tv_create_book_name').val() || '').trim();
+            const error = !name
+                ? 'Enter a name.'
+                : world_names?.includes(name) ? `A lorebook named "${name}" already exists.` : '';
+            // Keep the popup open so the typed name isn't lost.
+            if (error) {
+                $content.find('.tv-create-book-error').text(error).show();
+                return false;
+            }
+            chosenCardBooks = $content.find('.tv-card-book:checked').get().map(el => cardBooks[Number(el.dataset.index)]);
+            buildMethod = String($content.find('#tv_create_book_build:enabled').val() || 'later');
+            return true;
         },
-    );
-    const name = String(await popup.show() || '').trim();
-    if (!name) return;
-    // The prompt is async; bail if the user switched chats meanwhile.
+    });
+    if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) return;
+    // The popup is async; bail if the user switched chats meanwhile.
     if (getContext().chatId !== context.chatId) return;
-    if (world_names?.includes(name)) {
-        toastr.error(`A lorebook named "${name}" already exists.`, 'TunnelVision');
-        return;
-    }
 
     try {
         if (!await createNewWorldInfo(name)) {

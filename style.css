@@ -2857,3 +2857,20 @@ details.tv-confirm-diff-wrap[open] .tv-confirm-diff-summary::before { content: '
 .tv-adv-search-clear.tv-visible {
     display: inline-block;
 }
+
+/* ===== Create Chat Lorebook popup ===== */
+.tv-create-book-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+    margin-top: 12px;
+}
+
+.tv-create-book-body .text_pole {
+    margin: 0;
+}
+
+.tv-create-book-body .checkbox_label {
+    justify-content: flex-start;
+}
