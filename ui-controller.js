@@ -871,6 +871,7 @@ async function onCreateChatBook() {
             const $label = $('<label class="checkbox_label"><input type="checkbox" class="tv-card-book" /><span></span></label>');
             $label.find('input').prop('checked', true).attr('data-index', i);
             $label.find('span').text(book);
+            if (hasTree(book)) $label.append(' <small class="text_muted">(has a tree)</small>');
             $section.append($label);
         });
         $section.append('<small class="text_muted">Let TunnelVision search these too (read-only, so chat memories never go into them).</small>');
@@ -883,9 +884,11 @@ async function onCreateChatBook() {
                     <option value="later">Later</option>
                 </select>
                 <small class="text_muted">With LLM costs tokens · From Metadata is instant · Later: build it from the lorebook list yourself.</small>`);
-            // Nothing to build when every book is unticked.
+            // Only ticked books without a tree get built.
             $section.on('change', '.tv-card-book', () => {
-                $section.find('#tv_create_book_build').prop('disabled', !$section.find('.tv-card-book:checked').length);
+                const needsBuild = $section.find('.tv-card-book:checked').get()
+                    .some(el => !hasTree(cardBooks[Number(el.dataset.index)]));
+                $section.find('#tv_create_book_build').prop('disabled', !needsBuild);
             });
         }
         $content.append($section);
