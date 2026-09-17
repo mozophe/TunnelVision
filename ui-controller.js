@@ -963,9 +963,9 @@ async function onCreateChatBook() {
                 + `<li>Chat Ingest → <b>Ingest Messages</b> (${messageCount} messages)</li>`
                 + '<li>Build Tree Index → <b>From Metadata</b> or <b>With LLM</b></li></ol>';
             // A to-do list: keep it until the user closes it.
-            toastr.success(body, title, { escapeHtml: false, timeOut: 0, extendedTimeOut: 0, closeButton: true });
+            toastr.success(body, title, { escapeHtml: false, iconClass: 'tv-toast-plain', timeOut: 0, extendedTimeOut: 0, closeButton: true });
         } else {
-            toastr.success(body, title, { escapeHtml: false });
+            toastr.success(body, title, { escapeHtml: false, iconClass: 'tv-toast-plain' });
         }
     } catch (e) {
         toastr.error(e.message, 'TunnelVision');

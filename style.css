@@ -2677,6 +2677,14 @@ details.tv-confirm-diff-wrap[open] .tv-confirm-diff-summary::before { content: '
     justify-content: flex-start;
 }
 
+/* Create Chat Lorebook toast: success colour without the tick icon. The
+   selector must outrank ST's `body #toast-container>div` padding. */
+body #toast-container > .tv-toast-plain {
+    background-color: #5d9e5d;
+    background-image: none;
+    padding-left: 10px;
+}
+
 /* ===== Responsive Adjustments =====
    MUST STAY LAST IN THIS FILE. A media query adds no specificity, so these
    rules only beat their base counterparts by coming later in source order.
