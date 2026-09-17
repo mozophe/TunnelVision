@@ -471,8 +471,9 @@ https://github.com/Coneja-Chibi/TunnelVision
 5. **✅ Run Diagnostics**: Click "Run Diagnostics" to verify everything is green.
 
 **Doing it by hand:** attach any lorebook to the chat with SillyTavern's
-passport icon in the character panel (shift-click or long-press it), click the
-book in TunnelVision's lorebook list, switch on **Enable for this lorebook**,
+passport icon in the character panel (click it and pick the book; once a book
+is attached, a plain click opens it and shift-click or long-press changes it),
+click the book in TunnelVision's lorebook list, switch on **Enable for this lorebook**,
 and use **Build Tree Index**.
 *Tip:* set **Advanced → Lorebooks & Tree Building → Auto-Detect Lorebooks** to
 `TV - {{char}}` and any lorebook whose name contains `TV - <character>` is
