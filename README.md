@@ -435,7 +435,7 @@ https://github.com/Coneja-Chibi/TunnelVision
 
 ### Step 2: Set Up a Chat 📡
 
-1. **🔧 Enable Master Toggle**: Turn on TunnelVision in Extension Settings.
+1. **🔧 Enable Master Toggle**: Switch on **Enable TunnelVision** in Extension Settings.
 2. **🪄 Create Chat Lorebook**: Open a chat and click **Create Chat Lorebook**
    under *Lorebook Selection*. It suggests a name (`TV - <character>`, then
    `TV - <character> 2`, …), creates the book, attaches it to this chat, turns
@@ -446,22 +446,24 @@ https://github.com/Coneja-Chibi/TunnelVision
    globe button, e.g. an embedded lorebook you imported)*: the same popup
    offers to use them with TunnelVision as well. Leave them ticked — they're set to
    **Read Only**, so the AI can search the character's lore but never writes chat
-   events into it. If any of them has no tree yet, choose how to build it:
+   events into it. If any of them has no tree yet, pick a **Build Tree Index** option:
    - **With LLM**: sorts entries into categories with summaries (better retrieval, costs tokens)
-   - **From metadata**: groups entries by their existing groups and keys (instant, no LLM calls)
-   - **Later**: select the book in TunnelVision's lorebook list and build it yourself
+   - **From Metadata**: groups entries by their existing groups and keys (instant, no LLM calls)
+   - **Later**: select the book in TunnelVision's lorebook list and use its **Build Tree Index** section yourself
    
    The tree is saved per book, so later chats with the same character reuse it.
 4. **📥 Existing chat?** With the new book selected, click **Ingest Messages**
-   to pull facts out of the chat so far, then build the chat book's tree with
-   **From Metadata** (free) or **With LLM** (better categories, costs tokens).
+   under **Chat Ingest** to pull facts out of the chat so far. Then, under
+   **Build Tree Index**, click **From Metadata** (free) or **With LLM** (better
+   categories, costs tokens).
    A brand-new chat needs neither — its book starts with an empty tree and fills
    up as you play.
 5. **✅ Run Diagnostics**: Click "Run Diagnostics" to verify everything is green.
 
 **Doing it by hand:** attach any lorebook to the chat with SillyTavern's
 passport icon in the character panel (shift-click or long-press it), click the
-book's card in TunnelVision's list, switch it on, and build its tree.
+book in TunnelVision's lorebook list, switch on **Enable for this lorebook**,
+and use **Build Tree Index**.
 *Tip:* set **Advanced → Lorebooks & Tree Building → Auto-Detect Lorebooks** to
 `TV - {{char}}` and any lorebook whose name contains `TV - <character>` is
 switched on automatically — you only have to attach it.
