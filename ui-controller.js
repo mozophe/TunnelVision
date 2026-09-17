@@ -7,7 +7,8 @@ import { saveSettingsDebounced } from '../../../../script.js';
 import { getContext } from '../../../st-context.js';
 import { world_names, loadWorldInfo, saveWorldInfo, createNewWorldInfo, METADATA_KEY } from '../../../world-info.js';
 import { getAutoSummaryCount, resetAutoSummaryCount } from './auto-summary.js';
-import { getActiveTunnelVisionBooks } from './tool-registry.js';
+import { getActiveTunnelVisionBooks, getCharacterBooks } from './tool-registry.js';
+import { nextFreeName } from './shared-utils.js';
 import {
     getTree,
     saveTree,
@@ -32,6 +33,7 @@ import {
     syncTrackerUidsForLorebook,
     getBookPermission,
     setBookPermission,
+    createEmptyTree,
     getBookInjectionMode,
     setBookInjectionMode,
     SETTING_DEFAULTS,
@@ -735,6 +737,8 @@ async function loadLorebookUI(bookName) {
     if (bookData?.entries) {
         await syncTrackerUidsForLorebook(bookName, bookData.entries);
     }
+    // Some callers don't await; drop a render for a book that is no longer selected.
+    if (bookName !== currentLorebook) return;
     $('#tv_lorebook_enabled').prop('checked', isLorebookEnabled(bookName));
     $('#tv_book_description').val(getBookDescription(bookName) || '');
     $('#tv_book_permission').val(getBookPermission(bookName));
@@ -840,7 +844,41 @@ async function onCreateChatBook() {
     const chatName = context.groupId
         ? context.groups?.find(g => g.id === context.groupId)?.name
         : context.name2;
-    const name = String(await Popup.show.input('Create Chat Lorebook', 'Name for the new lorebook:', `TV - ${chatName || 'Chat'}`) || '').trim();
+    const defaultName = nextFreeName(`TV - ${chatName || 'Chat'}`, world_names);
+
+    // Character books TV isn't using yet (e.g. an imported card lorebook).
+    const cardBooks = getCharacterBooks().filter(b => world_names?.includes(b) && !isLorebookEnabled(b));
+    const hasTree = (b) => { const r = getTree(b)?.root; return !!(r?.children?.length || r?.entryUids?.length); };
+    const anyNeedsTree = cardBooks.some(b => !hasTree(b));
+
+    const cardHtml = cardBooks.length ? `
+        <div class="tv-help-text" style="margin-top: 10px; text-align: left;">
+            ${cardBooks.map((b, i) => `
+                <label class="checkbox_label"><input type="checkbox" class="tv-card-book" data-index="${i}" checked />
+                    Also use "${escapeHtml(b)}" with TunnelVision (read-only)</label>`).join('')}
+            ${anyNeedsTree ? `
+                <div style="margin: 6px 0 0 22px;">Build its tree:
+                    <label><input type="radio" name="tv_card_build" value="llm" checked /> With LLM</label>
+                    <label><input type="radio" name="tv_card_build" value="metadata" /> From metadata</label>
+                    <label><input type="radio" name="tv_card_build" value="later" /> Later</label>
+                </div>` : ''}
+        </div>` : '';
+
+    let chosenCardBooks = [];
+    let buildMethod = 'later';
+    const popup = new Popup(
+        `<h3>Create Chat Lorebook</h3><div>Name for the new lorebook:</div>${cardHtml}`,
+        POPUP_TYPE.INPUT,
+        defaultName,
+        {
+            onClosing: (p) => {
+                chosenCardBooks = [...p.dlg.querySelectorAll('.tv-card-book:checked')].map(el => cardBooks[Number(el.dataset.index)]);
+                buildMethod = p.dlg.querySelector('input[name="tv_card_build"]:checked')?.value || 'later';
+                return true;
+            },
+        },
+    );
+    const name = String(await popup.show() || '').trim();
     if (!name) return;
     // The prompt is async; bail if the user switched chats meanwhile.
     if (getContext().chatId !== context.chatId) return;
@@ -860,10 +898,28 @@ async function onCreateChatBook() {
         $('.chat_lorebook_button').addClass('world_set');
 
         setLorebookEnabled(name, true);
-        selectCurrentLorebook(name);
+        // Empty tree so memories saved before any build still land under Root.
+        saveTree(name, createEmptyTree(name));
+
+        for (const book of chosenCardBooks) {
+            setLorebookEnabled(book, true);
+            setBookPermission(book, 'read_only');
+        }
         await registerTools();
-        refreshUI();
         toastr.success(`Created "${name}" and attached it to this chat.`, 'TunnelVision');
+
+        // Reuse the panel's build handlers; they act on the selected book.
+        if (buildMethod !== 'later') {
+            for (const book of chosenCardBooks.filter(b => !hasTree(b))) {
+                selectCurrentLorebook(book);
+                $('#tv_lorebook_controls').show();
+                await loadLorebookUI(book);
+                await (buildMethod === 'llm' ? onBuildWithLLM() : onBuildFromMetadata());
+            }
+        }
+
+        selectCurrentLorebook(name);
+        refreshUI();
     } catch (e) {
         toastr.error(e.message, 'TunnelVision');
         console.error('[TunnelVision] Create chat lorebook failed:', e);
