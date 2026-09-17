@@ -798,9 +798,9 @@ async function onCreateChatBook() {
                 <label class="checkbox_label"><input type="checkbox" class="tv-card-book" data-index="${i}" checked />
                     Also use Character Lore "${escapeHtml(b)}" with TunnelVision (read-only)</label>`).join('')}
             ${anyNeedsTree ? `
-                <div style="margin: 6px 0 0 22px;">Build its tree:
+                <div style="margin: 6px 0 0 22px;">Build Tree Index:
                     <label><input type="radio" name="tv_card_build" value="llm" checked /> With LLM</label>
-                    <label><input type="radio" name="tv_card_build" value="metadata" /> From metadata</label>
+                    <label><input type="radio" name="tv_card_build" value="metadata" /> From Metadata</label>
                     <label><input type="radio" name="tv_card_build" value="later" /> Later</label>
                 </div>` : ''}
         </div>` : '';
@@ -866,7 +866,7 @@ async function onCreateChatBook() {
         const messageCount = getContext().chat?.length || 0;
         if (messageCount > 1) {
             toastr.success(
-                `${created} Next: click Ingest Messages below to pull in the ${messageCount} existing messages, then build this book's tree (From Metadata or With LLM).`,
+                `${created} Next: under Chat Ingest, click Ingest Messages to pull in the ${messageCount} existing messages. Then, under Build Tree Index, click From Metadata or With LLM.`,
                 'TunnelVision',
                 { timeOut: 10000 },
             );
