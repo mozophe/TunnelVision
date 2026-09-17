@@ -438,7 +438,7 @@ https://github.com/Coneja-Chibi/TunnelVision
 1. **🔧 Enable Master Toggle**: Switch on **Enable TunnelVision** in Extension Settings.
 2. **🪄 Create Chat Lorebook**: Open a chat and click **Create Chat Lorebook**
    under *Lorebook Selection*. It suggests a name (`TV - <character>`, then
-   `TV - <character> 2`, …), creates the book, attaches it to this chat, turns
+   `TV - <character> 2`, …), creates the lorebook, attaches it to this chat, turns
    TunnelVision on for it and selects it. Every memory TunnelVision saves in
    this chat goes here. The button is greyed out if the chat already has a chat
    lorebook, since SillyTavern allows only one.
@@ -452,28 +452,28 @@ https://github.com/Coneja-Chibi/TunnelVision
    **Read Only**, so the AI can search the character's lore but never writes chat
    events into it.
 
-   A **Build Tree Index** dropdown appears only if at least one of these books
-   has never had a tree built. Your choice applies only to those books — a book
+   A **Build Tree Index** dropdown appears only if at least one of these lorebooks
+   has never had a tree built. Your choice applies only to those lorebooks — a lorebook
    that already has a tree (say, from an earlier chat) is marked **(has a
    tree)**, keeps it, and is never rebuilt here. The dropdown is greyed out
-   unless a ticked book still needs a tree:
+   unless a ticked lorebook still needs a tree:
    - **With LLM**: sorts entries into categories with summaries (better retrieval, costs tokens)
    - **From Metadata**: groups entries by their existing groups and keys (instant, no LLM calls)
-   - **Later**: select the book in TunnelVision's lorebook list and use its **Build Tree Index** section yourself
+   - **Later**: select the lorebook in TunnelVision's lorebook list and use its **Build Tree Index** section yourself
    
-   The tree is saved per book, so later chats with the same character reuse it.
-4. **📥 Existing chat?** With the new book selected, click **Ingest Messages**
+   The tree is saved per lorebook, so later chats with the same character reuse it.
+4. **📥 Existing chat?** With the new lorebook selected, click **Ingest Messages**
    under **Chat Ingest** to pull facts out of the chat so far. Then, under
    **Build Tree Index**, click **From Metadata** (free) or **With LLM** (better
    categories, costs tokens).
-   A brand-new chat needs neither — its book starts with an empty tree and fills
+   A brand-new chat needs neither — its lorebook starts with an empty tree and fills
    up as you play.
 5. **✅ Run Diagnostics**: Click "Run Diagnostics" to verify everything is green.
 
 **Doing it by hand:** attach any lorebook to the chat with SillyTavern's
-passport icon in the character panel (click it and pick the book; once a book
+passport icon in the character panel (click it and pick the lorebook; once a lorebook
 is attached, a plain click opens it and shift-click or long-press changes it),
-click the book in TunnelVision's lorebook list, switch on **Enable for this lorebook**,
+click the lorebook in TunnelVision's lorebook list, switch on **Enable for this lorebook**,
 and use **Build Tree Index**.
 *Tip:* set **Advanced → Lorebooks & Tree Building → Auto-Detect Lorebooks** to
 `TV - {{char}}` and any lorebook whose name contains `TV - <character>` is
