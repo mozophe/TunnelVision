@@ -5,7 +5,7 @@
 
 import { saveSettingsDebounced } from '../../../../script.js';
 import { getContext } from '../../../st-context.js';
-import { world_names, loadWorldInfo, saveWorldInfo } from '../../../world-info.js';
+import { world_names, loadWorldInfo, saveWorldInfo, createNewWorldInfo, METADATA_KEY } from '../../../world-info.js';
 import { getAutoSummaryCount, resetAutoSummaryCount } from './auto-summary.js';
 import { getActiveTunnelVisionBooks } from './tool-registry.js';
 import {
@@ -85,6 +85,7 @@ export function bindUIEvents() {
     $('#tv_lorebook_enabled').on('change', onLorebookToggle);
     $('#tv_book_description').on('input', onBookDescriptionChange);
     $('#tv_build_metadata').on('click', onBuildFromMetadata);
+    $('#tv_create_chat_book').on('click', onCreateChatBook);
     $('#tv_build_llm').on('click', onBuildWithLLM);
     $('#tv_open_tree_editor').on('click', onOpenTreeEditor);
     $('#tv_import_file').on('change', onImportTree);
@@ -482,6 +483,7 @@ export function refreshUI() {
     $('#tv_llm_call_timeout').val(Math.round((settings.llmCallTimeout ?? 120000) / 1000));
 
     populateLorebookDropdown();
+    updateCreateChatBookButton();
     $('#tv_lorebook_controls').toggle(!!currentLorebook);
 
     if (currentLorebook) {
@@ -756,6 +758,56 @@ function updateIngestUI() {
     } else {
         $('#tv_ingest_chat_info').text('No chat open. Open a chat to ingest messages.');
         $('#tv_ingest_chat').prop('disabled', true);
+    }
+}
+
+// ST allows one chat lorebook per chat, so the button is only usable when none is attached.
+function updateCreateChatBookButton() {
+    const context = getContext();
+    const disabled = !context.chatId || !!context.chatMetadata?.[METADATA_KEY];
+    $('#tv_create_chat_book')
+        .prop('disabled', disabled)
+        .attr('title', !context.chatId
+            ? 'Open a chat first.'
+            : disabled
+                ? 'This chat already has a chat lorebook.'
+                : 'Creates a lorebook, attaches it to this chat, and turns TunnelVision on for it.');
+}
+
+async function onCreateChatBook() {
+    const context = getContext();
+    if (!context.chatId || context.chatMetadata?.[METADATA_KEY]) return;
+
+    const chatName = context.groupId
+        ? context.groups?.find(g => g.id === context.groupId)?.name
+        : context.name2;
+    const name = String(await Popup.show.input('Create Chat Lorebook', 'Name for the new lorebook:', `TV - ${chatName || 'Chat'}`) || '').trim();
+    if (!name) return;
+    // The prompt is async; bail if the user switched chats meanwhile.
+    if (getContext().chatId !== context.chatId) return;
+    if (world_names?.includes(name)) {
+        toastr.error(`A lorebook named "${name}" already exists.`, 'TunnelVision');
+        return;
+    }
+
+    try {
+        if (!await createNewWorldInfo(name)) {
+            toastr.error(`Could not create lorebook "${name}".`, 'TunnelVision');
+            return;
+        }
+        // Same binding ST's chat-lorebook popup writes.
+        context.chatMetadata[METADATA_KEY] = name;
+        await context.saveMetadata();
+        $('.chat_lorebook_button').addClass('world_set');
+
+        setLorebookEnabled(name, true);
+        selectCurrentLorebook(name);
+        await registerTools();
+        refreshUI();
+        toastr.success(`Created "${name}" and attached it to this chat.`, 'TunnelVision');
+    } catch (e) {
+        toastr.error(e.message, 'TunnelVision');
+        console.error('[TunnelVision] Create chat lorebook failed:', e);
     }
 }
 
