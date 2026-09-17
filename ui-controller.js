@@ -906,7 +906,6 @@ async function onCreateChatBook() {
             setBookPermission(book, 'read_only');
         }
         await registerTools();
-        toastr.success(`Created "${name}" and attached it to this chat.`, 'TunnelVision');
 
         // Reuse the panel's build handlers; they act on the selected book.
         if (buildMethod !== 'later') {
@@ -920,6 +919,19 @@ async function onCreateChatBook() {
 
         selectCurrentLorebook(name);
         refreshUI();
+
+        // Shown last so the card-book build toasts don't bury it.
+        const created = `Created "${name}" and attached it to this chat.`;
+        const messageCount = getContext().chat?.length || 0;
+        if (messageCount > 1) {
+            toastr.success(
+                `${created} Next: click Ingest Messages below to pull in the ${messageCount} existing messages, then build this book's tree (From Metadata or With LLM).`,
+                'TunnelVision',
+                { timeOut: 10000 },
+            );
+        } else {
+            toastr.success(created, 'TunnelVision');
+        }
     } catch (e) {
         toastr.error(e.message, 'TunnelVision');
         console.error('[TunnelVision] Create chat lorebook failed:', e);
