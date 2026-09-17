@@ -442,9 +442,10 @@ https://github.com/Coneja-Chibi/TunnelVision
    TunnelVision on for it and selects it. Every memory TunnelVision saves in
    this chat goes here. The button is greyed out if the chat already has a chat
    lorebook, since SillyTavern allows only one.
-3. **📖 Card lorebook** *(only if the character came with one)*: the same popup
-   offers to use it with TunnelVision as well. Leave it ticked — it's set to
-   **Read Only**, so the AI can search the card's lore but never writes chat
+3. **📖 Character Lore** *(only if the character has lorebooks linked via the
+   globe button, e.g. an embedded lorebook you imported)*: the same popup
+   offers to use them with TunnelVision as well. Leave them ticked — they're set to
+   **Read Only**, so the AI can search the character's lore but never writes chat
    events into it. If that book has no tree yet, choose how to build one:
    - **With LLM**: sorts entries into categories with summaries (better retrieval, costs tokens)
    - **From metadata**: groups entries by their existing groups and keys (instant, no LLM calls)

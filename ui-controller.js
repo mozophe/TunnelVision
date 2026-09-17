@@ -855,7 +855,7 @@ async function onCreateChatBook() {
         <div class="tv-help-text" style="margin-top: 10px; text-align: left;">
             ${cardBooks.map((b, i) => `
                 <label class="checkbox_label"><input type="checkbox" class="tv-card-book" data-index="${i}" checked />
-                    Also use "${escapeHtml(b)}" with TunnelVision (read-only)</label>`).join('')}
+                    Also use Character Lore "${escapeHtml(b)}" with TunnelVision (read-only)</label>`).join('')}
             ${anyNeedsTree ? `
                 <div style="margin: 6px 0 0 22px;">Build its tree:
                     <label><input type="radio" name="tv_card_build" value="llm" checked /> With LLM</label>
