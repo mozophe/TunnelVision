@@ -442,6 +442,10 @@ https://github.com/Coneja-Chibi/TunnelVision
    TunnelVision on for it and selects it. Every memory TunnelVision saves in
    this chat goes here. The button is greyed out if the chat already has a chat
    lorebook, since SillyTavern allows only one.
+   When it's done, a **"TV - &lt;character&gt; is ready"** toast confirms the
+   setup and lists any Character Lore it switched on (step 3). In a chat that
+   already has messages, the toast stays open with a **Next steps** list for
+   step 4 until you close it.
 3. **📖 Character Lore** *(only if the character has lorebooks linked via the
    globe button, e.g. an embedded lorebook you imported)*: the same popup
    offers to use them with TunnelVision as well. Leave them ticked — they're set to
