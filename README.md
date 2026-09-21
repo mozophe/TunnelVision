@@ -11,17 +11,23 @@
 
 ---
 
-> ℹ️ **About this repository.** TunnelVision started at `Coneja-Chibi/TunnelVision`,
-> which has since been deleted from GitHub along with its open pull requests.
-> This repository carries the work forward and is where development continues.
-> The original author's design and most of this documentation are theirs; the
-> features below marked **new** landed after the last published upstream release.
+> ℹ️ **About this repository.** TunnelVision started at `Coneja-Chibi/TunnelVision`
+> and was actively maintained there until it was taken down in September 2026,
+> along with its open pull requests. This repository carries the work forward and
+> is where development continues. The design and most of this documentation are
+> the original author's.
+>
+> GitHub re-rooted the fork network onto a March 2026 snapshot, so anything still
+> pointing at "upstream" now resolves to a version roughly 200 commits behind.
+> **[What's New](#-whats-new)** below is the difference from that snapshot — five
+> months of the original author's continued development plus this repository's own
+> contributions, not a list of changes made here.
 
 ## 🆕 What's New
 
-Everything below landed after the last published upstream release, grouped by
-what it actually does. Most of it is **off by default** — TunnelVision behaves
-exactly as the original docs describe until you switch something on.
+Everything below is new relative to the March 2026 snapshot the fork network is
+now rooted on, grouped by what it actually does. Most of it is **off by default**
+— TunnelVision behaves as the older docs describe until you switch something on.
 
 **First, the thing several of these depend on:** the
 **[Sidecar LLM](#-sidecar-llm-a-second-set-of-eyes)** *(off)* is a second model
