@@ -182,7 +182,7 @@ Worth noting: **VectHare and TunnelVision can coexist.** VectHare excels at *cha
 
 ## 📡 How the Broadcast Works
 
-### 🗺️ **The Channel Guide** *(Your Tree Index)*
+### 🗺 **The Channel Guide** *(Your Tree Index)*
 
 Every lorebook managed by TunnelVision gets organized into a **hierarchical tree**. Think of it as a TV guide with channels and sub-channels. TunnelVision builds this automatically (with or without LLM help) and generates summaries for each node so the AI knows what's on each channel without watching the whole thing.
 
@@ -244,7 +244,7 @@ Two ways the AI can browse, pick what works for your setup:
 | 📡 **Traversal** (default) | AI sees top-level channels → picks one → tunes deeper → picks again → retrieves entries. Step by step, like channel surfing. | Large lorebooks, deep trees |
 | 📋 **Collapsed** | Entire guide shown at once. AI picks channel IDs directly in one shot. Based on RAPTOR research. | Smaller lorebooks, faster retrieval |
 
-### 🛠️ **8 AI Tools** *(The Full Remote Control)*
+### 🛠 **8 AI Tools** *(The Full Remote Control)*
 
 TunnelVision gives your AI a complete memory management toolkit. These register as **tool calls**, and the AI decides when and how to use them:
 
@@ -349,7 +349,7 @@ Runs before your chat model sees the prompt. Reads a collapsed view of the
 channel guide, picks the relevant nodes and injects their entries. Your chat
 model can still call Search on top of this.
 
-#### ✍️ Auto-Write After Generation
+#### ✍ Auto-Write After Generation
 
 Runs after the reply lands. Reviews the turn and decides what to remember,
 update, merge, summarize or forget — capped at **Max Operations Per Turn**.
@@ -447,7 +447,7 @@ it alone.
 
 *✍️ Building and maintaining the memory*
 
-### 🏷️ **Tracker Entries** *(Your AI's Notebook)*
+### 🏷 **Tracker Entries** *(Your AI's Notebook)*
 
 This is one of TunnelVision's most powerful features. A **tracker** is a lorebook entry that contains whatever structured information you want the AI to maintain, and the AI will actively check and update it every turn.
 
@@ -516,7 +516,7 @@ be distracted by:
 Each step toggles independently, and a cooldown keeps it from firing on every
 single message.
 
-### ♻️ **Memory Lifecycle** *(Defragmenting the Archive)*
+### ♻ **Memory Lifecycle** *(Defragmenting the Archive)*
 
 > **Off by default.**
 
@@ -565,7 +565,7 @@ conversation is in. Left empty, it matches the conversation.
 
 *🛡️ Staying in control*
 
-### ↩️ **Undo on Delete & Swipe** *(The Rewind)*
+### ↩ **Undo on Delete & Swipe** *(The Rewind)*
 
 Autonomous memory has an obvious failure mode: the AI saves something off the
 back of a reply you then delete, and the lorebook keeps it forever.
@@ -593,7 +593,7 @@ skips the turn.
 token. A bare `[ ... ]` or `(( ... ))` is *not* treated as OOC, since those are
 ordinary action beats and sound effects.
 
-### 🎚️ **Token Housekeeping**
+### 🎚 **Token Housekeeping**
 
 Several settings exist purely to keep TunnelVision's own footprint down:
 
@@ -784,7 +784,7 @@ That's it. TunnelVision registers its tools automatically. Your AI will start us
 
 ---
 
-## ⚙️ Settings Reference
+## ⚙ Settings Reference
 
 ### Main Panel
 
@@ -1001,7 +1001,7 @@ have to switch on the job you want:
 - In a chat with **Injection Mode: Native**, tools can still write — it only
   changes who handles injection
 
-### "My lorebook changes disappeared!" ↩️
+### "My lorebook changes disappeared!" ↩
 
 That's probably the undo working. Deleting or swiping a message reverses the
 lorebook writes that turn caused — entries created are deleted, entries updated
@@ -1010,7 +1010,7 @@ Only the last 20 turns are snapshotted.
 
 ---
 
-## 🏗️ Architecture (For the Curious)
+## 🏗 Architecture (For the Curious)
 
 TunnelVision is modular by design. The index is lean, just the orchestrator wiring everything together:
 
