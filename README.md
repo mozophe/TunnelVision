@@ -19,11 +19,13 @@
 > troubleshooting documented since have come from several
 > [contributors](#-credits).
 >
-> GitHub re-rooted the fork network onto a March 2026 snapshot, so anything still
-> pointing at "upstream" now resolves to a version roughly 200 commits behind.
-> **[CHANGELOG.md](CHANGELOG.md)** records the difference from that snapshot — five
-> months of the original author's continued development plus this repository's own
-> contributions, not a list of changes made here.
+> With the original gone, this fork's parent on GitHub is now an unrelated March
+> 2026 snapshot (`da28e58`), which sits 216 commits behind. Don't mistake it for
+> a current upstream — there isn't one.
+>
+> **[CHANGELOG.md](CHANGELOG.md)** records everything since that snapshot: work
+> done here, the original author's development up to August 2026, and several
+> other contributors' along the way.
 
 ## 📑 Contents
 

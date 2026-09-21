@@ -5,9 +5,12 @@ All notable user-facing changes to TunnelVision.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 TunnelVision has no tagged releases. This file records the difference between the
-current code and the March 2026 snapshot (`da28e58`) that GitHub re-rooted the
-fork network onto after the original `Coneja-Chibi/TunnelVision` was taken down —
-roughly 200 commits, most of them the original author's own continued development.
+current code and the March 2026 snapshot (`da28e58`) that this fork's GitHub
+parent points at after the original `Coneja-Chibi/TunnelVision` was taken down.
+
+That's 216 commits, from several people — see
+[Credits](README.md#-credits). The original author's own development continued
+until August 2026 and is included here too.
 
 Section links point into [README.md](README.md), which explains each feature in full.
 
