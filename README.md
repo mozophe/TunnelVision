@@ -19,27 +19,57 @@
 
 ## 🆕 What's New
 
-Everything in this table landed after the last published upstream release. Most
-of it is **off by default** — TunnelVision still behaves exactly as the original
-docs describe until you switch something on.
+Everything below landed after the last published upstream release, grouped by
+what it actually does. Most of it is **off by default** — TunnelVision behaves
+exactly as the original docs describe until you switch something on.
 
-| Area | What it does | Default |
-|------|--------------|---------|
-| 🧩 **[Sidecar LLM](#-sidecar-llm-a-second-set-of-eyes)** | Point TunnelVision at its own API key and model, separate from your chat model. Powers auto-retrieval before generation and auto-writing after it. | Off |
-| 🌍 **[Rolling World State](#-rolling-world-state-the-station-ident)** | A single living document of where the story stands, refreshed periodically and injected every turn. | Off |
-| 🎯 **[Smart Context](#-smart-context-the-pre-roll)** | Injects the entries your recent messages actually mention, before the AI asks. No LLM call — fast local matching. | Off |
-| 🔧 **[Post-Turn Processor](#-post-turn-processor-the-night-shift)** | After each reply: extract new facts, detect scene changes, archive the scene that ended, update trackers. | Off |
-| ♻️ **[Memory Lifecycle](#-memory-lifecycle-defragmenting-the-archive)** | Periodic defrag — merge near-duplicates, compress verbose entries, rebalance the tree. | Off |
-| 🤫 **[SECRET tags](#-secret-tags-dramatic-irony)** | Mark what a character doesn't know yet, so the AI writes around it instead of blurting it. | On |
-| ↩️ **[Undo on delete & swipe](#-undo-on-delete--swipe-the-rewind)** | Delete or swipe a message and the lorebook writes it caused are reverted. | On |
-| 🔐 **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** | Read + Write, Read Only, or Write Only, per lorebook. Plus sidecar vs native injection. | Read + Write |
-| 🎭 **[Narrative Conditionals](#-narrative-conditionals-conditional-channels)** | `[emotion:…]`, `[location:…]`-style tags on entry keywords, judged against the scene. | On |
+**First, the thing several of these depend on:** the
+**[Sidecar LLM](#-sidecar-llm-a-second-set-of-eyes)** *(off)* is a second model
+with its own endpoint and key, separate from your chat model. It does the
+lorebook legwork cheaply while your expensive model writes prose. Anything marked
+🧩 below needs it configured.
+
+#### 📥 Getting context in *(retrieval)*
+
+| Feature | What it does | Default |
+|---------|--------------|---------|
+| 🧩 **[Auto-Retrieve Before Generation](#-sidecar-llm-a-second-set-of-eyes)** | The sidecar reads the channel guide and injects relevant entries before your chat model runs. | Off |
+| 🎯 **[Smart Context](#-smart-context-the-pre-roll)** | Injects entries your recent messages actually mention. No LLM call — fast local matching. | Off |
+| 🌍 **[Rolling World State](#-rolling-world-state-the-station-ident)** | One living document of where the story stands, refreshed periodically, injected every turn. | Off |
+| 🎭 **[Narrative Conditionals](#-narrative-conditionals-conditional-channels)** | `[emotion:…]`, `[location:…]` tags on entry keywords, judged against the scene rather than the literal word. | On |
+
+#### ✍️ Keeping the lorebook current *(autonomous writing)*
+
+| Feature | What it does | Default |
+|---------|--------------|---------|
+| 🧩 **[Auto-Write After Generation](#-sidecar-llm-a-second-set-of-eyes)** | The sidecar reviews each turn and decides what to remember, update, merge, summarize or forget. | Off |
+| 🔧 **[Post-Turn Processor](#-post-turn-processor-the-night-shift)** | Extracts facts, detects scene changes, archives the scene that ended, updates trackers. | Off |
+| ♻️ **[Memory Lifecycle](#-memory-lifecycle-defragmenting-the-archive)** | Periodic defrag — merges near-duplicates, compresses verbose entries, rebalances the tree. | Off |
+| 🌐 **[Output Language](#-output-language)** | Forces everything TunnelVision writes into one language. | Auto |
+
+#### 🛡️ Keeping automation in check *(control & safety)*
+
+| Feature | What it does | Default |
+|---------|--------------|---------|
+| ↩️ **[Undo on delete & swipe](#-undo-on-delete--swipe-the-rewind)** | Delete or swipe a message and the lorebook writes it caused are reversed. | On |
+| 🔐 **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** | Read + Write, Read Only or Write Only, per lorebook — plus sidecar vs native injection. | Read + Write |
+| 🤫 **[SECRET tags](#-secret-tags-dramatic-irony)** | Marks what a character doesn't know yet, so the AI writes around it instead of blurting it. | On |
+| 🔁 **Swipe handling** | The writer runs on swipes, discards output if the message changed mid-run, and re-runs for a swipe landing mid-run. | On |
+
+#### 🚀 Setting up and getting through the day *(workflow)*
+
+| Feature | What it does | Default |
+|---------|--------------|---------|
+| 🪄 **[Create Chat Lorebook](#-installation--setup)** | One button: makes a lorebook, attaches it to the chat, enables it, and offers to bring in Character Lore read-only. | — |
+| 📥 **[Ingest hidden messages](#-user-commands-the-remote-control)** | An **Include hidden messages** toggle, image/video skipping, and a live count of what will be read. | Off |
+| 🧹 **[Token housekeeping](#-token-housekeeping)** | Compact tool prompts, ephemeral results, selective retrieval and one combined injection budget. | On |
+
+#### 🎨 Interface
+
+| Feature | What it does | Default |
+|---------|--------------|---------|
 | 🎨 **[Color themes](#-color-themes-adjusting-the-picture)** | Keep TunnelVision pink, follow your SillyTavern theme, or pin any installed one. | Pink |
-| 🪄 **[One-click chat setup](#-installation--setup)** | **Create Chat Lorebook** makes a lorebook, attaches it, enables it, and offers to bring in Character Lore read-only. | — |
-| 📥 **[Ingest hidden messages](#-user-commands-the-remote-control)** | An **Include hidden messages** toggle, image/video skipping, live count. | Off |
-| 📱 **[Mobile tree editor](#-the-tree-editor-on-mobile)** | A **Move to…** button so assignment works without drag-and-drop. | — |
-| 🔁 **Swipes get memorized** | The writer now runs on swipes, discards its output if the message changed mid-run, and re-runs for a swipe that lands mid-run. | On |
-| 🌐 **[Output language](#-output-language)** | Force everything TunnelVision writes into one language. | Auto |
+| 📱 **[Mobile tree editor](#-the-tree-editor-on-mobile)** | A **Move to…** button, so assigning entries works without drag-and-drop. | — |
 
 ### 📱 The tree editor on mobile
 
