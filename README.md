@@ -43,7 +43,7 @@
 | [📺 The Broadcast Flow](#-the-broadcast-flow-under-the-hood) | A turn, step by step |
 | [🔥 Features](#-features) | Everything, grouped by what it does |
 | [🚀 Installation & Setup](#-installation--setup) | Get running |
-| [⚙️ Settings Reference](#-settings-reference) | All 60 settings |
+| [⚙️ Settings Reference](#-settings-reference) | Every setting in the panel |
 | [🔧 Common Issues](#-common-issues) | When it isn't working |
 | [🏗️ Architecture](#-architecture-for-the-curious) | Module map |
 | [🤝 Compatibility](#-compatibility) | Other extensions |
@@ -393,10 +393,22 @@ instructions can be overridden if you want it phrased your way. Lives in
 
 ### 🎭 **Narrative Conditionals** *(Conditional Channels)*
 
-Put a tag like `[emotion:grief]`, `[location:the underground]`, `[timeOfDay:night]`,
-`[mood:…]` or `[weather:…]` in an entry's keywords and the sidecar judges it
-against the actual scene during retrieval — not against whether the literal word
-appeared. An entry can be held back until the scene genuinely fits.
+Put a condition tag in an entry's keywords and the sidecar judges it against the
+actual scene during retrieval — not against whether the literal word appeared. An
+entry can be held back until the scene genuinely fits.
+
+Eight condition types are supported:
+
+| Tag | Asks |
+|-----|------|
+| `[emotion:grief]` | Is this emotion present in recent messages? |
+| `[mood:tense]` | Does the scene have this overall atmosphere? |
+| `[timeOfDay:night]` | Is it this time of day in the fiction? |
+| `[location:the underground]` | Are the characters at or in this place? |
+| `[weather:storm]` | Are these weather conditions present? |
+| `[activity:travelling]` | Are the characters doing this? |
+| `[relationship:rivals]` | Is this the dynamic between the active characters? |
+| `[freeform:…]` | Any condition in plain language, judged by the LLM |
 
 ### 📚 **Multi-Lorebook Support** *(Multiple Channels, One Remote)*
 
@@ -683,9 +695,10 @@ One-click diagnostic panel that checks **everything**:
 - Are all tools properly registered? ✅
 - Settings corrupted? Auto-fixed. ✅
 - Orphaned trees from deleted lorebooks? Found. ✅
-- 60+ checks with auto-fix for most issues
+- 60+ checks in total, about a dozen of which repair the problem themselves
 
-*When someone says "it's not working," run diagnostics first. It catches 90% of problems automatically.* 🔧
+*When someone says "it's not working," run diagnostics first. It finds most
+configuration problems, and fixes the safely-repairable ones for you.* 🔧
 
 ---
 
@@ -907,7 +920,7 @@ That's it. TunnelVision registers its tools automatically. Your AI will start us
 
 ## 🔧 Common Issues
 
-_**Run diagnostics first. Seriously. It catches 90% of problems automatically.**_ 🩺
+_**Run diagnostics first. Seriously — it finds most configuration problems.**_ 🩺
 
 ### "The AI isn't using any tools!" 😤
 
@@ -963,8 +976,9 @@ have to switch on the job you want:
 - Use the **connection test** button next to the endpoint. A wrong `format`
   (OpenAI-compatible vs Anthropic vs Google) fails even with a valid key
 - The endpoint is a base URL (`https://api.openai.com/v1`), not a full path
-- Repeated failures open a circuit breaker that stops calls for the session.
-  Reload SillyTavern to reset it
+- Three consecutive failures open a circuit breaker that pauses sidecar calls for
+  five minutes. It clears itself after that, on the next success, or immediately
+  when you run the connection test — no reload needed
 - Check the **Activity Feed** — sidecar calls appear there, including failures
 
 ### "World State / Smart Context never inject anything!" 🌍
@@ -1010,7 +1024,7 @@ entry-manager.js  : Lorebook CRUD shared by all memory tools
 entry-protection.js: Guards that keep automation off constant entries
 entry-scoring.js  : Relevance scoring shared by retrieval paths
 ui-controller.js  : Settings panel, tree editor, drag-and-drop + move picker
-diagnostics.js    : 30+ failure checks with auto-fixes
+diagnostics.js    : 60+ failure checks, ~12 with auto-repair
 commands.js       : !command and /tv-* syntax interceptor
 auto-summary.js   : Interval-based summary injection
 summary-runner.js : Executes a summary pass
