@@ -188,6 +188,11 @@ TunnelVision requires:
 
 No extra models. No databases. No chunking math. No re-indexing. You're already paying for an intelligent model. TunnelVision just lets it do what it's good at. 🐰
 
+*In fairness:* the optional [Sidecar LLM](#-sidecar-llm-a-second-set-of-eyes) is a
+second endpoint and key, and the optional **Embedding Sidecar** is exactly the
+embedding model described above. Both are off by default and the core loop above
+needs neither — but if you switch them on, this section's boast is only half true.
+
 ### 3. 🔄 Read-Write vs Read-Only
 
 This is the killer. **RAG is a search engine.** It retrieves. That's all it does. One direction. Information flows out of the lorebook into the context window, and nothing ever flows back.
@@ -334,7 +339,13 @@ You send a message
 
 The depth of traversal depends on your tree structure and the recurse limit setting. Shallow trees resolve in 1-2 calls. Deep trees might take 3-5. The AI stops drilling when it finds what it needs.
 
-**Meanwhile, normal keyword triggers are SUPPRESSED** for TV-managed lorebooks. No double-injection, no keyword conflicts. TunnelVision is the sole retrieval mechanism. The AI picks what it reads. 🎯
+**Meanwhile, normal keyword triggers are SUPPRESSED** for TV-managed lorebooks by
+default. No double-injection, no keyword conflicts. The AI picks what it reads. 🎯
+
+Three things opt out of that, deliberately: **constant** entries still inject
+unconditionally (*Constant Entry Passthrough*, on), a lorebook set to **Native**
+injection mode is left entirely to SillyTavern, and *Keyword Trigger Passthrough*
+(off) restores ordinary keyword firing if you want it back.
 
 ---
 
@@ -450,7 +461,9 @@ The AI handles this **autonomously**. When it writes a summary, it can decide on
 
 ### 🧩 **Trigram Dedup** *(Rerun Detection)*
 
-When the AI tries to Remember something, TunnelVision runs a fast trigram similarity check against existing entries. If something similar already exists, it warns the AI: *"Hey, this looks like a rerun. Maybe just update the existing entry instead."* Non-blocking (still saves), but dramatically reduces lorebook bloat.
+When the AI tries to Remember something, TunnelVision checks it against existing entries. If something similar already exists, it tells the AI: *"Hey, this looks like a rerun. Maybe just update the existing entry instead."*
+
+Two things have changed since this was only a trigram check. With an **Embedding Sidecar** configured it compares by meaning instead of character overlap, which catches a duplicate that was reworded; trigrams are the fallback. And **On duplicate** now has two modes — *Warn, save anyway* (the default, non-blocking as described) or *Decline, tell the AI to update instead*, which does block the write and hands back the matching UIDs.
 
 ### 🧩 **Sidecar LLM** *(A Second Set of Eyes)*
 
@@ -633,7 +646,7 @@ One-click diagnostic panel that checks **everything**:
 - Are all tools properly registered? ✅
 - Settings corrupted? Auto-fixed. ✅
 - Orphaned trees from deleted lorebooks? Found. ✅
-- 30+ checks with auto-fix for most issues
+- 60+ checks with auto-fix for most issues
 
 *When someone says "it's not working," run diagnostics first. It catches 90% of problems automatically.* 🔧
 
@@ -644,7 +657,15 @@ One-click diagnostic panel that checks **everything**:
 ### Prerequisites
 
 - **SillyTavern** (latest version recommended)
-- **An API that supports tool calling** (Claude, GPT-4, Gemini, etc.)
+- **An API that supports tool calling** (Claude, GPT-4, Gemini, etc.) — required
+  for the tool-driven loop that is TunnelVision's main event
+
+If your chat model *can't* do tool calls, TunnelVision isn't useless: the
+[Sidecar LLM](#-sidecar-llm-a-second-set-of-eyes), [Smart Context](#-smart-context-the-pre-roll)
+and [Rolling World State](#-rolling-world-state-the-station-ident) paths all inject
+through ordinary prompt text and never touch the chat model's tool support. You
+lose the AI browsing the guide itself, which is the point of the thing, so treat
+that as a fallback rather than the intended setup.
 
 ### Step 1: Install 📥
 
@@ -955,7 +976,10 @@ tools/
   └── notebook.js    : Private AI scratchpad (per-chat metadata)
 ```
 
-Every module has a single responsibility. Every potential failure point has a diagnostic check. No tech debt. 🧹
+Most modules have a single responsibility, and the common failure points have
+diagnostic checks. It is not spotless — `feed-ui/` and its siblings are a
+refactored feed that was written but never wired up, so the live feed in
+`activity-feed.js` duplicates some of it. 🧹
 
 ---
 
