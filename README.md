@@ -2,35 +2,44 @@
 
 *Stop making your AI guess what to remember. Give it a remote control and let it browse.* 🐰
 
-[![Status: Active Development](https://img.shields.io/badge/Status-Active%20Development-blueviolet.svg)](https://github.com/Coneja-Chibi/TunnelVision)
+[![Status: Active Development](https://img.shields.io/badge/Status-Active%20Development-blueviolet.svg)](https://github.com/mozophe/TunnelVision)
 [![SillyTavern Extension](https://img.shields.io/badge/SillyTavern-Extension-blue.svg)](https://docs.sillytavern.app/)
-[![BunnyMo Compatible](https://img.shields.io/badge/BunnyMo-Compatible-pink.svg)](https://github.com/Coneja-Chibi/BunnyMo)
+[![BunnyMo Compatible](https://img.shields.io/badge/BunnyMo-Compatible-pink.svg)](https://docs.sillytavern.app/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.svg)](LICENSE)
 
-*A [RoleCall](https://github.com/Coneja-Chibi) project, built for the SillyTavern community as a proof of concept.* 🐇
+*Originally a RoleCall project by Coneja-Chibi, built for the SillyTavern community as a proof of concept.* 🐇
 
 ---
 
-> ⚠️ **This is a fork** of [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision). The section below lists what this fork still changes on top of it. For the full original docs, keep scrolling. 👇
+> ℹ️ **About this repository.** TunnelVision started at `Coneja-Chibi/TunnelVision`,
+> which has since been deleted from GitHub along with its open pull requests.
+> This repository carries the work forward and is where development continues.
+> The original author's design and most of this documentation are theirs; the
+> features below marked **new** landed after the last published upstream release.
 
-## 🆕 What This Fork Changes
+## 🆕 What's New
 
-Most of what this fork used to carry has since been merged upstream — per-chat
-lorebooks, self-contained sidecar API config, snapshot undo/cleanup, activity
-feed ordering, `tv_tracker` keywords, the dedup/summary work, stop-cancels-retrieval
-([#46](https://github.com/Coneja-Chibi/TunnelVision/pull/46)), read-only OOC turns
-([#48](https://github.com/Coneja-Chibi/TunnelVision/pull/48)) and the OpenRouter
-origin fix ([#49](https://github.com/Coneja-Chibi/TunnelVision/pull/49)) all live in
-[Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision) now.
-What remains here is not yet upstream:
+Everything in this table landed after the last published upstream release. Most
+of it is **off by default** — TunnelVision still behaves exactly as the original
+docs describe until you switch something on.
 
-| Area | What changed |
-|------|--------------|
-| 🪄 **One-click chat setup** | A **Create Chat Lorebook** button creates a lorebook, attaches it to the open chat and turns TunnelVision on for it. If the character came with its own lorebook, it offers to use that one too, read-only, and to build its tree. See [Setup](#-installation--setup). |
-| 🔄 **The lorebook list stays current** | A newly created, imported or attached lorebook used to appear only after a page reload, and so did the **Chat Ingest** section after switching on **Enable for this lorebook**. Both now update straight away. The auto-detect help text shows `{{char}}` again instead of "SillyTavern System". |
-| 🔁 **Swipes get memorized** | Swiping reverted the old reply's memories but never ran the writer for the new one, so that turn ended up with no memory at all. The writer now runs on swipes, drops its output if the message changed while it ran, and runs again for a swipe that lands mid-run. |
-| 📥 **Ingest can read hidden messages** | An **Include hidden messages** toggle, image/video skipping and a live count of what will be read. See [User Commands](#-user-commands-the-remote-control). |
-| 📱 **The tree editor works on a phone** | Assigning an entry to a category was drag-and-drop only, and HTML5 drag events never fire from touch — so on a phone there was no way to do the editor's main job. See below. |
+| Area | What it does | Default |
+|------|--------------|---------|
+| 🧩 **[Sidecar LLM](#-sidecar-llm-a-second-set-of-eyes)** | Point TunnelVision at its own API key and model, separate from your chat model. Powers auto-retrieval before generation and auto-writing after it. | Off |
+| 🌍 **[Rolling World State](#-rolling-world-state-the-station-ident)** | A single living document of where the story stands, refreshed periodically and injected every turn. | Off |
+| 🎯 **[Smart Context](#-smart-context-the-pre-roll)** | Injects the entries your recent messages actually mention, before the AI asks. No LLM call — fast local matching. | Off |
+| 🔧 **[Post-Turn Processor](#-post-turn-processor-the-night-shift)** | After each reply: extract new facts, detect scene changes, archive the scene that ended, update trackers. | Off |
+| ♻️ **[Memory Lifecycle](#-memory-lifecycle-defragmenting-the-archive)** | Periodic defrag — merge near-duplicates, compress verbose entries, rebalance the tree. | Off |
+| 🤫 **[SECRET tags](#-secret-tags-dramatic-irony)** | Mark what a character doesn't know yet, so the AI writes around it instead of blurting it. | On |
+| ↩️ **[Undo on delete & swipe](#-undo-on-delete--swipe-the-rewind)** | Delete or swipe a message and the lorebook writes it caused are reverted. | On |
+| 🔐 **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** | Read + Write, Read Only, or Write Only, per lorebook. Plus sidecar vs native injection. | Read + Write |
+| 🎭 **[Narrative Conditionals](#-narrative-conditionals-conditional-channels)** | `[emotion:…]`, `[location:…]`-style tags on entry keywords, judged against the scene. | On |
+| 🎨 **[Color themes](#-color-themes-adjusting-the-picture)** | Keep TunnelVision pink, follow your SillyTavern theme, or pin any installed one. | Pink |
+| 🪄 **[One-click chat setup](#-installation--setup)** | **Create Chat Lorebook** makes a lorebook, attaches it, enables it, and offers to bring in Character Lore read-only. | — |
+| 📥 **[Ingest hidden messages](#-user-commands-the-remote-control)** | An **Include hidden messages** toggle, image/video skipping, live count. | Off |
+| 📱 **[Mobile tree editor](#-the-tree-editor-on-mobile)** | A **Move to…** button so assignment works without drag-and-drop. | — |
+| 🔁 **Swipes get memorized** | The writer now runs on swipes, discards its output if the message changed mid-run, and re-runs for a swipe that lands mid-run. | On |
+| 🌐 **[Output language](#-output-language)** | Force everything TunnelVision writes into one language. | Auto |
 
 ### 📱 The tree editor on mobile
 
@@ -110,7 +119,7 @@ Lorebooks were supposed to fix this. And they kinda do, if you're willing to mai
 
 ## 🆚 "But What About RAG?"
 
-Yeah, you've heard of RAG (Retrieval-Augmented Generation). SillyTavern has a built-in vector storage extension, and we even built **[VectHare](https://github.com/Coneja-Chibi/VectHare)**: a massively upgraded RAG system with temporal decay, importance weighting, multiple vector backends (Vectra, LanceDB, Qdrant), conditional activation rules, and scene management. VectHare is a *damn good* RAG implementation. We would know. We built it. 🐰
+Yeah, you've heard of RAG (Retrieval-Augmented Generation). SillyTavern has a built-in vector storage extension, and the original author also built **VectHare**: a massively upgraded RAG system with temporal decay, importance weighting, multiple vector backends (Vectra, LanceDB, Qdrant), conditional activation rules, and scene management. VectHare is a *damn good* RAG implementation, by the same hand that started this one. 🐰
 
 So why build TunnelVision too? Because **RAG and TunnelVision solve the same problem in fundamentally different ways**, and for lorebook retrieval specifically, TunnelVision's approach wins on three fronts:
 
@@ -359,6 +368,11 @@ Type commands directly in the chat box to force specific actions:
 
 The prefix is configurable (default `!`). These strip from your message and inject a forced instruction. The AI has no choice but to comply. 😤
 
+The same actions are registered as **slash commands**, if you'd rather use
+SillyTavern's own command bar: `/tv-search`, `/tv-remember`, `/tv-summarize`,
+`/tv-forget`, `/tv-merge`, `/tv-split`, `/tv-ingest`, and `/tv-dedupe` —
+which batch-merges every near-duplicate in a lorebook in one pass.
+
 Ingest also has a panel in settings with a message range and an **Include hidden
 messages** toggle. Messages carrying a ghost icon in chat are hidden from the
 prompt, so ingest skips them by default — turn it on when older messages were
@@ -402,6 +416,177 @@ The AI handles this **autonomously**. When it writes a summary, it can decide on
 
 When the AI tries to Remember something, TunnelVision runs a fast trigram similarity check against existing entries. If something similar already exists, it warns the AI: *"Hey, this looks like a rerun. Maybe just update the existing entry instead."* Non-blocking (still saves), but dramatically reduces lorebook bloat.
 
+### 🧩 **Sidecar LLM** *(A Second Set of Eyes)*
+
+> **Off by default.** Needs its own endpoint, key and model under *Sidecars*.
+
+Everything above assumes your chat model does the retrieval work through tool
+calls. The **sidecar** is a second, separate model that works the lorebook on its
+own — cheap and fast, while your expensive chat model concentrates on prose.
+
+Give it an endpoint (OpenAI-compatible, Anthropic or Google), a key and a model
+name. It's self-contained: TunnelVision never borrows your SillyTavern
+connection profile or exposes your other API keys, and only this one key is
+stored. There's a connection test button next to it.
+
+Two jobs, switched on separately:
+
+| Job | When it runs | What it does |
+|-----|-------------|--------------|
+| 📡 **Auto-Retrieve Before Generation** | Before your chat model sees the prompt | Reads a collapsed view of the channel guide, picks the relevant nodes, injects their entries. Your chat model can still search on top of this. |
+| ✍️ **Auto-Write After Generation** | After the reply lands | Reviews the turn and decides what to remember, update, merge, summarize or forget — capped at **Max Operations Per Turn**. |
+
+An **Embedding Sidecar** can be configured separately, for semantic duplicate
+detection rather than the trigram check. Embeddings are cached to IndexedDB and
+recomputed only when an entry's content actually changes.
+
+*Your chat model writes the show. The sidecar runs the archive.* 🗄️
+
+### 🌍 **Rolling World State** *(The Station Ident)*
+
+> **Off by default.**
+
+Auto-Summary writes individual historical records. The world state is the
+opposite: **one continuously-updated document** describing where the story stands
+right now — current scene, recent events, live story threads, key character
+states.
+
+It's refreshed by a background LLM call every N messages and injected every
+single turn, so the model always opens with a sense of place. Injection position,
+depth and role are configurable, and both the injection header and the update
+instructions can be overridden if you want it phrased your way. Lives in
+`chat_metadata` — per chat, never leaks between them.
+
+### 🎯 **Smart Context** *(The Pre-Roll)*
+
+> **Off by default.**
+
+Scans your recent messages for names and terms matching entry titles and keys,
+and injects the matches **before** generation — so the obvious context is already
+there without the AI spending a tool call to fetch it.
+
+This makes **no LLM call**. It's local string matching at `GENERATION_STARTED`,
+with alias expansion from entry content, a cooldown that penalizes
+recently-injected entries so the same three entries don't dominate every turn,
+and a character budget you set. With an Embedding Sidecar configured it can score
+by meaning instead of surface text.
+
+### 🔧 **Post-Turn Processor** *(The Night Shift)*
+
+> **Off by default.**
+
+Runs after each AI response and does the memory admin your chat model shouldn't
+be distracted by:
+
+1. **Extract facts + detect scene transitions** — one call, both jobs
+2. **Archive the scene** — when a transition is detected, summarize the scene
+   that just ended (an event-driven alternative to interval Auto-Summary)
+3. **Update trackers** — find trackers for whoever was mentioned, refresh them
+
+Each step toggles independently, and a cooldown keeps it from firing on every
+single message.
+
+### ♻️ **Memory Lifecycle** *(Defragmenting the Archive)*
+
+> **Off by default.**
+
+Long stories bloat lorebooks. This is periodic maintenance, running far less
+often than the post-turn processor and making bigger structural changes:
+
+- **Consolidate** — merge entries that are really about the same thing
+- **Compress** — shorten verbose entries while keeping the facts
+- **Reorganize** — rebalance the tree as it grows lopsided
+
+Think memory defrag. Each of the three toggles separately.
+
+### 🤫 **SECRET Tags** *(Dramatic Irony)*
+
+Prefix an entry's content with `[SECRET — Marcus is unaware]` and the AI treats
+it as narrator-only knowledge: it won't let Marcus reveal, act on or acknowledge
+the information until the story establishes he's learned it. Characters not named
+in the tag are unaffected.
+
+The write tools apply the tag themselves when the chat shows someone doesn't know
+something, and **remove it** once the story establishes they've found out.
+
+> ⚠️ **This is a storytelling device, not access control.** Tagged content is
+> still sent to the model and to your API provider in full. It shapes how the
+> character behaves; it does not hide anything from anyone.
+
+### ↩️ **Undo on Delete & Swipe** *(The Rewind)*
+
+Autonomous memory has an obvious failure mode: the AI saves something off the
+back of a reply you then delete, and the lorebook keeps it forever.
+
+TunnelVision snapshots every entry a turn is about to touch. Delete that message
+or swipe it away and the writes are reversed — entries created that turn are
+deleted, entries updated that turn are restored to their previous content, and
+the tree structure is put back. Reverts show up in the Activity Feed so you can
+see it happen.
+
+Snapshots persist into chat metadata, so this survives a page reload or a chat
+switch, and the last 20 turns are kept. Deletions that slip past SillyTavern's
+events — `/cut`, or a delete while the extension wasn't loaded — are caught the
+next time the chat loads.
+
+### 🔐 **Per-Lorebook Permissions & Injection Modes**
+
+Each lorebook gets its own rules, set right under **Lorebook Selection**:
+
+| Permission | Effect |
+|-----------|--------|
+| **Read + Write** *(default)* | Full access |
+| **Read Only** | Search works, every write is blocked — right for a character's own lore |
+| **Write Only** | No search, but writes land — a pure destination book |
+
+And how entries reach the prompt:
+
+| Injection Mode | Effect |
+|---------------|--------|
+| **Sidecar** *(default)* | TunnelVision suppresses keyword triggers and injects what it retrieved |
+| **Native** | SillyTavern handles injection at its own positions and outlets; TunnelVision's tools can still read and write, they just don't gate delivery |
+
+Native mode is the escape hatch when a lorebook depends on ST's positioning and
+you don't want TunnelVision in the middle of it.
+
+**Constant entries are never touched** by any autonomous write path. Anything you
+marked constant is authored reference material, and background automation leaves
+it alone.
+
+### 🎭 **Narrative Conditionals** *(Conditional Channels)*
+
+Put a tag like `[emotion:grief]`, `[location:the underground]`, `[timeOfDay:night]`,
+`[mood:…]` or `[weather:…]` in an entry's keywords and the sidecar judges it
+against the actual scene during retrieval — not against whether the literal word
+appeared. An entry can be held back until the scene genuinely fits.
+
+### 🎨 **Color Themes** *(Adjusting the Picture)*
+
+Under **Appearance**, TunnelVision's panels can keep their original pink, follow
+whatever SillyTavern theme is active, or be pinned to any one installed
+SillyTavern theme independently of the rest of your UI.
+
+### 🌐 **Output Language**
+
+Set a language and everything TunnelVision generates — entries, summaries,
+trackers, world state — is written in it, regardless of what language the
+conversation is in. Left empty, it matches the conversation.
+
+### 🎚️ **Token Housekeeping**
+
+Several settings exist purely to keep TunnelVision's own footprint down:
+
+- **Compact Tool Prompts** *(on)* — registers one guide tool plus one-line
+  descriptions instead of eight full schemas every turn
+- **Ephemeral Tool Results** *(on)* — clears old TunnelVision results out of
+  context so they don't pile up turn after turn
+- **Selective Retrieval** *(on)* — shows the AI entry names first and lets it
+  pick, rather than dumping whole entries
+- **Total Injection Budget** — one character cap across the mandatory, world
+  state, smart context and notebook prompts combined
+- **Hide Tool-Call Messages** *(off)* — keeps the tool chatter out of your chat
+  log entirely
+
 ### 🩺 **Built-In Diagnostics** *(Signal Check)*
 
 One-click diagnostic panel that checks **everything**:
@@ -430,7 +615,7 @@ One-click diagnostic panel that checks **everything**:
 Paste this URL into SillyTavern's "Install Extension" input:
 
 ```
-https://github.com/Coneja-Chibi/TunnelVision
+https://github.com/mozophe/TunnelVision
 ```
 
 ### Step 2: Set Up a Chat 📡
@@ -494,35 +679,135 @@ That's it. TunnelVision registers its tools automatically. Your AI will start us
 
 ## ⚙️ Settings Reference
 
-### Main Settings
+### Main Panel
 
 | Setting | Default | What It Does |
 |---------|---------|-------------|
-| 🔧 Global Enable | ✅ On | Master kill switch for everything |
-| 🎨 Appearance → Color Theme | TunnelVision Pink | Keep the original palette, follow the active SillyTavern theme, or use any installed SillyTavern theme for TunnelVision only |
-| 🔍 Search Mode | Traversal | How the AI browses the channel guide (traversal vs collapsed) |
-| 🔄 Recurse Limit | 5 | Max recursive tool calls per generation (higher = deeper channel surfing) |
-| 🧠 LLM Build Detail | Full | How much entry content the LLM sees during tree building |
+| 🔧 Enable TunnelVision | ✅ On | Master kill switch for everything |
+| 🎭 Enable Narrative Conditionals | ✅ On | Evaluate `[emotion:…]`-style keyword tags against the scene |
+| 🎨 Appearance → Color Theme | TunnelVision Pink | Original palette, follow the active SillyTavern theme, or pin one installed theme |
+| 📖 Access Permission *(per lorebook)* | Read + Write | Read + Write, Read Only, or Write Only |
+| 💉 Injection Mode *(per lorebook)* | Sidecar | Sidecar (TV injects) or Native (ST injects at its own outlets) |
+| 📥 Include hidden messages *(Chat Ingest)* | ❌ Off | Let ingest read messages hidden from the prompt |
+
+### Lorebooks & Tree Building
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🔎 Auto-Detect Lorebooks | *(empty)* | Name pattern to enable automatically; supports `{{char}}` |
+| 📚 Multi-Lorebook Mode | Unified | One merged guide, or per-book navigation |
+| 🧠 LLM Build Detail | Lite | How much entry content the LLM sees while building the tree |
+| 🌳 Tree Granularity | Auto | How aggressively entries get split into categories |
 | 📏 LLM Chunk Size | 30,000 | Characters per LLM chunk during tree building |
-| ⚡ Mandatory Tools | ❌ Off | Force AI to use at least one tool call every turn |
 
-### Advanced Settings
+### Retrieval
 
 | Setting | Default | What It Does |
 |---------|---------|-------------|
-| 🔍 Dedup Detection | ❌ Off | Trigram similarity check on Remember (warns about reruns) |
-| 📊 Dedup Threshold | 0.85 | How similar entries need to be to trigger a warning (0-1) |
-| 💬 Commands Enabled | ✅ On | Allow !command syntax in chat |
+| 🔍 Search Mode | Traversal | Traversal (drill down) or Collapsed (whole guide at once) |
+| 📋 Selective Retrieval | ✅ On | Show entry names first and let the AI pick, instead of dumping content |
+| 🔢 Collapsed Depth | 2 | Levels visible in collapsed mode |
+
+### Prompt Injection
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🎚️ Total Injection Budget | 0 *(unlimited)* | Combined character cap across mandatory / world state / smart context / notebook |
+| ⚡ Mandatory Tool Calls | ❌ Off | Force at least one tool call every turn (position, depth, role and text all configurable) |
+| 📌 Constant Entry Passthrough | ✅ On | Let constant entries bypass TunnelVision's gating |
+| 🔑 Keyword Trigger Passthrough | ❌ Off | Allow traditional keyword triggers on TV-managed lorebooks |
+
+### Tools
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🛠️ Per-tool toggles | All on | Search, Remember, Update, Forget, Summarize, Reorganize, Merge/Split, Notebook |
+| ✋ Tool Call Confirmation | All off | Ask before the AI creates, updates, forgets, summarizes, reorganizes or merges |
+| ✏️ Tool Prompt Overrides | *(empty)* | Replace any tool's description with your own wording |
+| 🔄 Tool Call Recursion Limit | 5 | Max recursive tool calls per generation |
+| 🫥 Hide Tool-Call Messages | ❌ Off | Keep tool chatter out of the visible chat |
+| 🧹 Ephemeral Tool Results | ✅ On | Clear old TunnelVision results from context (per-tool list) |
+| 📦 Compact Tool Prompts | ✅ On | One guide tool + one-line descriptions instead of eight full schemas |
+
+### Slash Commands
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 💬 Commands Enabled | ✅ On | Allow `!command` syntax in chat |
 | ❗ Command Prefix | `!` | Character that triggers command parsing |
-| 🔄 Auto-Summary | ❌ Off | Inject summary instruction every N messages |
-| 📊 Auto-Summary Interval | 20 | Messages between auto-summary triggers |
-| 📚 Multi-Book Mode | Unified | How multiple lorebooks are presented (unified vs per-book) |
-| 🔌 Connection Profile | (current) | Which API profile to use for tree building |
+| 💬 Context messages | 50 | How much chat a command sees |
 
-### Per-Tool Toggles
+### Memory & Summarisation
 
-Every tool can be individually enabled/disabled in Advanced Settings:
-Search, Remember, Update, Forget, Summarize, Reorganize, Merge/Split, Notebook
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🔄 Auto-Summary | ❌ Off | Inject a summary instruction every N messages |
+| 📊 Auto-Summary Interval | 20 | Messages between triggers |
+| 🛑 Exclude newest | 2 | Recent messages a summary leaves alone (minimum 1) |
+| 🎬 Summarize opening messages | ❌ Off | Fold greetings into summaries too |
+| 🫥 Auto-hide summarized messages | ✅ On | Collapse covered messages behind their summary |
+| 🔍 Duplicate Detection | ❌ Off | Similarity check on Remember |
+| 📊 Embedding threshold | 0.85 | Cosine similarity — same meaning |
+| 📊 Trigram threshold | 0.85 | Character overlap — nearly the same string; wants a lower value than the embedding threshold |
+| ⚖️ On duplicate | Warn | Warn and save anyway, or decline and tell the AI to update |
+
+### Sidecars *(off by default)*
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🧩 Enable Sidecar LLM | ❌ Off | Endpoint, key, model and format (OpenAI-compatible / Anthropic / Google) |
+| 🌡️ Temperature / Max Tokens | 0.3 / 1000 | Sampler settings for the sidecar |
+| 📡 Auto-Retrieve Before Generation | ❌ Off | Sidecar picks relevant nodes before your chat model runs |
+| 💬 Chat Context / Max Injection | 10 msgs / 4,000 tokens | Retrieval budget |
+| ✍️ Auto-Write After Generation | ❌ Off | Sidecar decides what to remember/update/summarize after each reply |
+| 💬 Writer context / Max Operations | 15 msgs / 5 | Writer budget |
+| 🧬 Enable Embedding Sidecar | ❌ Off | Separate endpoint for semantic similarity |
+| 📝 Background LLM Instructions | *(empty)* | Extra standing instructions for every background call |
+| ⏱️ Background LLM Call Timeout | 120s | Per-call timeout for tree building, world state, smart context, lifecycle, post-turn |
+
+### Language
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🌐 Output Language | Auto | Force all generated content into one language |
+
+### Rolling World State *(off by default)*
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🌍 Enable Rolling World State | ❌ Off | Maintain a living story-state document |
+| 🔄 Update Interval | 10 | Messages between refreshes |
+| 📏 Max Injection | 3,000 chars | Size cap on the injected document |
+| 📍 Position / Depth / Role | In Chat / 2 / System | Where it lands in the prompt |
+| ✏️ Header & Update Overrides | *(empty)* | Rewrite the injection header or the update instructions |
+
+### Smart Context *(off by default)*
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🎯 Enable Smart Context | ❌ Off | Inject entries your recent messages mention |
+| 👀 Lookback | 6 | Messages scanned for mentions |
+| 🔢 Max Entries / Max Injection | 8 / 4,000 chars | Selection and size caps |
+| 🌲 Depth | 3 | How deep in the tree matching reaches |
+| 📍 Position / Role | In Chat / System | Where it lands in the prompt |
+
+### Memory Lifecycle *(off by default)*
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| ♻️ Enable Memory Lifecycle | ❌ Off | Periodic structural maintenance |
+| ⏲️ Base Interval | 30 | Messages between runs |
+| 🔗 Consolidate / Compress / Reorganize | All on | Which maintenance steps run |
+
+### Post-Turn Processor *(off by default)*
+
+| Setting | Default | What It Does |
+|---------|---------|-------------|
+| 🔧 Enable Post-Turn Processor | ❌ Off | Background agent after each reply |
+| ⏲️ Cooldown | 1 | Messages between runs |
+| 📋 Update Trackers | ✅ On | Refresh trackers for mentioned entities |
+| 🔬 Extract Facts | ✅ On | Pull new facts out of the turn |
+| 🎬 Archive Scene on Transition | ✅ On | Summarize a scene when it ends |
 
 ---
 
@@ -581,13 +866,48 @@ TunnelVision is modular by design. The index is lean, just the orchestrator wiri
 index.js          : Init, events, wiring (lean orchestrator)
 tree-store.js     : Tree data structure, CRUD, settings, serialization
 tree-builder.js   : Auto-build trees from lorebook metadata or LLM
+tree-categories.js: Category inference and node consolidation
 tool-registry.js  : ToolManager registration for all 8 tools
 entry-manager.js  : Lorebook CRUD shared by all memory tools
+entry-protection.js: Guards that keep automation off constant entries
+entry-scoring.js  : Relevance scoring shared by retrieval paths
 ui-controller.js  : Settings panel, tree editor, drag-and-drop + move picker
 diagnostics.js    : 30+ failure checks with auto-fixes
-commands.js       : !command syntax interceptor
+commands.js       : !command and /tv-* syntax interceptor
 auto-summary.js   : Interval-based summary injection
+summary-runner.js : Executes a summary pass
+summary-hierarchy.js : Act and story-level summary roll-ups
+summary-collapse.js  : Hides messages behind their summary
+arc-tracker.js    : Narrative arc grouping for summaries
+message-identity.js  : Stable per-message IDs for snapshots and trackers
+
+--- retrieval & injection ---
+smart-context.js  : Mention-driven pre-generation injection
+sidecar-retrieval.js : Pre-gen tree navigation via the sidecar LLM
+prompt-injection-service.js : Prompt assembly and installation
+conditions.js     : [emotion:…]-style conditional trigger evaluation
+world-state.js    : Rolling living story-state document
+embedding-cache.js: Cached embeddings + cosine scoring (IndexedDB)
+
+--- autonomous maintenance ---
+sidecar-writer.js : Post-generation writer, snapshots and undo
+post-turn-processor.js : Fact extraction, scene archiving, tracker updates
+memory-lifecycle.js    : Periodic consolidate / compress / reorganize
+turn-classification.js : OOC and turn-type detection
+background-events.js   : Background task feed events
+world-info-attribution.js : Scopes WI activation to its true cause
+
+--- infrastructure ---
+llm-sidecar.js    : Self-contained sidecar transport + circuit breaker
+agent-utils.js    : Retry, chat excerpts, shared agent helpers
+shared-utils.js   : SECRET-tag definitions and common helpers
+constants.js      : Shared limits and magic numbers
+theme.js          : Color theme resolution and application
+theme-presets.js  : Reads SillyTavern's installed themes
+theme-entry.js    : Wires up the Color Theme select
 activity-feed.js  : Real-time tool call visibility widget
+feed-state.js / feed-views.js / feed-helpers.js / feed-ui/ : Feed internals
+
 tools/
   ├── search.js      : Channel navigation and entry retrieval
   ├── remember.js    : Create new entries (with dedup + schema design)
