@@ -1085,27 +1085,29 @@ A few things worth knowing before you open one:
 
 ## 🙌 Credits
 
-TunnelVision was created and maintained by **Coneja-Chibi** as a RoleCall
-project — the concept, the architecture and the voice of these docs are theirs.
+TunnelVision was created and maintained by
+**[Coneja-Chibi](https://github.com/Coneja-Chibi)** as a RoleCall project — the
+concept, the architecture and the voice of these docs are theirs.
 
 It grew collaboratively from there:
 
-- **mozophe** — Create Chat Lorebook, the mobile tree editor, per-chat lorebook
-  selection, the self-contained sidecar and embedding config, snapshot undo, OOC
-  handling, and the swipe and deletion fixes.
-- **tobitus** — the summary system: collapsing summarized messages behind their
-  summary, writing summaries as constant entries, keeping the opening and live
-  scene out of them, and summarizing without host function calling.
-- **DrMagisto** — exposed the rolling world state, smart context, memory
-  lifecycle and post-turn processor settings in the UI, plus staging-compat fixes
-  to swipe detection, snapshotting and background-task lifecycle.
-- **[J3tze](https://github.com/J3tze/TunnelVision)** — the whole
-  [Color Themes](#-color-themes-adjusting-the-picture) feature.
-- **erratos** — a batch of eight fixes across `tool_choice`, slash commands, the
-  post-turn processor, imports and auto-hide.
-- **phampyk** — floating-button viewport and stylesheet fixes.
-- **fluxtendu** — skipping tool-format conversion on SillyTavern's native Claude
-  backend.
+- **[mozophe](https://github.com/mozophe)** — Create Chat Lorebook, the mobile
+  tree editor, per-chat lorebook selection, the self-contained sidecar and
+  embedding config, snapshot undo, OOC handling, and the swipe and deletion fixes.
+- **[tobitus](https://github.com/tobitus)** — the summary system: collapsing
+  summarized messages behind their summary, writing summaries as constant entries,
+  keeping the opening and live scene out of them, and summarizing without host
+  function calling.
+- **[DrMagisto](https://github.com/DrMagisto)** — exposed the rolling world state,
+  smart context, memory lifecycle and post-turn processor settings in the UI, plus
+  staging-compat fixes to swipe detection, snapshotting and background-task
+  lifecycle.
+- **[J3tze](https://github.com/J3tze)** — the whole Color Themes feature.
+- **[erratos](https://github.com/erratos)** — a batch of eight fixes across
+  `tool_choice`, slash commands, the post-turn processor, imports and auto-hide,
+  and skipping tool-format conversion on SillyTavern's native Claude backend.
+- **[phampyk](https://github.com/phampyk)** — floating-button viewport and
+  stylesheet fixes.
 
 `git shortlog -sn` gives the current commit breakdown, but it under-credits:
 J3tze's theme work was brought across by cherry-pick and lost its original
