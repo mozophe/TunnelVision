@@ -4,9 +4,11 @@ All notable user-facing changes to TunnelVision.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-TunnelVision has no tagged releases. This file records the difference between the
-current code and the March 2026 snapshot (`da28e58`) that this fork's GitHub
-parent points at after the original `Coneja-Chibi/TunnelVision` was taken down.
+TunnelVision has no releases or version tags, and doesn't need them: SillyTavern
+installs an extension from a repository URL and a branch, so you always get the
+current tip rather than a tagged version. This file records the difference between
+that tip and the March 2026 snapshot (`da28e58`) this fork's GitHub parent points
+at, after the original `Coneja-Chibi/TunnelVision` was taken down.
 
 Those changes came from several people. Each entry below names who built it;
 [Credits](README.md#-credits) has the full list with links. The original author's
@@ -14,7 +16,7 @@ own development continued until August 2026 and is included here.
 
 Section links point into [README.md](README.md), which explains each feature in full.
 
-## Unreleased — changes since the March 2026 snapshot
+## Changes since the March 2026 snapshot
 
 ### Added
 
