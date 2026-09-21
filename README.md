@@ -1129,15 +1129,17 @@ It grew collaboratively from there:
 - **[aobmax](https://github.com/aobmax)** — the Anthropic tool format conversion
   layer.
 
-**And others.** Upstream squash-merged its pull requests, which replaces the
-author with the merger, and that repository has since been deleted — so some of
-the work here is credited to whoever merged it rather than whoever wrote it. If
-you're missing from this list, say so and it gets fixed.
+**And others.** Pull requests to the original repository were squash-merged, which
+records the person who merged them as the author — and since it was Coneja-Chibi's
+repository, that was always Coneja-Chibi. The repository has since been deleted,
+so those pull requests can no longer be read to find out who actually wrote what.
+Some of the work credited above to Coneja-Chibi is very likely someone else's. If
+that someone is you, open an issue and it gets fixed.
 
 `git shortlog -sn` gives the current commit breakdown, but don't read it as a
 credit list: J3tze's theme work and aobmax's conversion layer were both brought
 across by cherry-pick and lost their authorship, and squash-merged pull requests
-are recorded against whoever merged them.
+are recorded against Coneja-Chibi, who merged them.
 
 The original repository and its companion RAG extension, VectHare, went offline
 when that account's repositories were removed, so links to them no longer resolve.

@@ -11,9 +11,10 @@ that tip and the March 2026 snapshot (`da28e58`) this fork's GitHub parent point
 at, after the original `Coneja-Chibi/TunnelVision` was taken down.
 
 Those changes came from several people — see [Credits](README.md#-credits).
-Entries aren't attributed individually: upstream squash-merged its pull requests,
-which replaces the author with the merger, and that repository is gone, so for
-much of this history the original author can't be recovered. The original author's
+Entries aren't attributed individually: pull requests to the original repository
+were squash-merged and so are recorded against Coneja-Chibi, who owned it and
+merged them, and that repository is gone — so for much of this history the person
+who actually wrote a change can't be recovered. The original author's
 own development continued until August 2026 and is included here.
 
 Section links point into [README.md](README.md), which explains each feature in full.
