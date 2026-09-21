@@ -35,47 +35,80 @@ with its own endpoint and key, separate from your chat model. It does the
 lorebook legwork cheaply while your expensive model writes prose. Anything marked
 🧩 below needs it configured.
 
-#### 📥 Getting context in *(retrieval)*
+#### 📥 Getting context in
 
-| Feature | What it does | Default |
-|---------|--------------|---------|
-| 🧩 **[Auto-Retrieve Before Generation](#-sidecar-llm-a-second-set-of-eyes)** | The sidecar reads the channel guide and injects relevant entries before your chat model runs. | Off |
-| 🎯 **[Smart Context](#-smart-context-the-pre-roll)** | Injects entries your recent messages actually mention. No LLM call — fast local matching. | Off |
-| 🌍 **[Rolling World State](#-rolling-world-state-the-station-ident)** | One living document of where the story stands, refreshed periodically, injected every turn. | Off |
-| 🎭 **[Narrative Conditionals](#-narrative-conditionals-conditional-channels)** | `[emotion:…]`, `[location:…]` tags on entry keywords, judged against the scene rather than the literal word. | On |
+- **[Auto-Retrieve Before Generation](#-auto-retrieve-before-generation)** — `off` · needs 🧩
+  The sidecar reads the channel guide and injects the relevant entries before
+  your chat model runs.
 
-#### ✍️ Keeping the lorebook current *(autonomous writing)*
+- **[Smart Context](#-smart-context-the-pre-roll)** — `off`
+  Injects the entries your recent messages actually mention. No LLM call — fast
+  local matching.
 
-| Feature | What it does | Default |
-|---------|--------------|---------|
-| 🧩 **[Auto-Write After Generation](#-sidecar-llm-a-second-set-of-eyes)** | The sidecar reviews each turn and decides what to remember, update, merge, summarize or forget. | Off |
-| 🔧 **[Post-Turn Processor](#-post-turn-processor-the-night-shift)** | Extracts facts, detects scene changes, archives the scene that ended, updates trackers. | Off |
-| ♻️ **[Memory Lifecycle](#-memory-lifecycle-defragmenting-the-archive)** | Periodic defrag — merges near-duplicates, compresses verbose entries, rebalances the tree. | Off |
-| 🌐 **[Output Language](#-output-language)** | Forces everything TunnelVision writes into one language. | Auto |
+- **[Rolling World State](#-rolling-world-state-the-station-ident)** — `off`
+  One living document of where the story stands, refreshed periodically and
+  injected every turn.
 
-#### 🛡️ Keeping automation in check *(control & safety)*
+- **[Narrative Conditionals](#-narrative-conditionals-conditional-channels)** — `on`
+  `[emotion:…]` and `[location:…]` tags on entry keywords, judged against the
+  scene rather than the literal word.
 
-| Feature | What it does | Default |
-|---------|--------------|---------|
-| ↩️ **[Undo on delete & swipe](#-undo-on-delete--swipe-the-rewind)** | Delete or swipe a message and the lorebook writes it caused are reversed. | On |
-| 🔐 **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** | Read + Write, Read Only or Write Only, per lorebook — plus sidecar vs native injection. | Read + Write |
-| 🤫 **[SECRET tags](#-secret-tags-dramatic-irony)** | Marks what a character doesn't know yet, so the AI writes around it instead of blurting it. | On |
-| 🔁 **Swipe handling** | The writer runs on swipes, discards output if the message changed mid-run, and re-runs for a swipe landing mid-run. | On |
+#### ✍️ Keeping the lorebook current
 
-#### 🚀 Setting up and getting through the day *(workflow)*
+- **[Auto-Write After Generation](#-auto-write-after-generation)** — `off` · needs 🧩
+  The sidecar reviews each turn and decides what to remember, update, merge,
+  summarize or forget.
 
-| Feature | What it does | Default |
-|---------|--------------|---------|
-| 🪄 **[Create Chat Lorebook](#-installation--setup)** | One button: makes a lorebook, attaches it to the chat, enables it, and offers to bring in Character Lore read-only. | — |
-| 📥 **[Ingest hidden messages](#-user-commands-the-remote-control)** | An **Include hidden messages** toggle, image/video skipping, and a live count of what will be read. | Off |
-| 🧹 **[Token housekeeping](#-token-housekeeping)** | Compact tool prompts, ephemeral results, selective retrieval and one combined injection budget. | On |
+- **[Post-Turn Processor](#-post-turn-processor-the-night-shift)** — `off`
+  Extracts facts, detects scene changes, archives the scene that ended, updates
+  trackers.
+
+- **[Memory Lifecycle](#-memory-lifecycle-defragmenting-the-archive)** — `off`
+  Periodic defrag — merges near-duplicates, compresses verbose entries,
+  rebalances the tree.
+
+- **[Output Language](#-output-language)** — `auto`
+  Forces everything TunnelVision writes into one language.
+
+#### 🛡️ Keeping automation in check
+
+- **[Undo on delete & swipe](#-undo-on-delete--swipe-the-rewind)** — `on`
+  Delete or swipe a message and the lorebook writes it caused are reversed.
+
+- **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** — `read + write`
+  Read + Write, Read Only or Write Only, per lorebook — plus sidecar vs native
+  injection.
+
+- **[SECRET tags](#-secret-tags-dramatic-irony)** — `on`
+  Marks what a character doesn't know yet, so the AI writes around it instead of
+  blurting it out.
+
+- **Swipe handling** — `on`
+  The writer runs on swipes, discards its output if the message changed mid-run,
+  and re-runs for a swipe that lands mid-run.
+
+#### 🚀 Setting up and getting through the day
+
+- **[Create Chat Lorebook](#step-2-set-up-a-chat-)** — one button
+  Makes a lorebook, attaches it to the chat, enables it, and offers to bring in
+  Character Lore read-only.
+
+- **[Chat Ingest reads hidden messages](#-chat-ingest)** — `off`
+  An **Include hidden messages** toggle, image and video skipping, and a live
+  count of what will be read.
+
+- **[Token housekeeping](#-token-housekeeping)** — `on`
+  Compact tool prompts, ephemeral results, selective retrieval and one combined
+  injection budget.
 
 #### 🎨 Interface
 
-| Feature | What it does | Default |
-|---------|--------------|---------|
-| 🎨 **[Color themes](#-color-themes-adjusting-the-picture)** | Keep TunnelVision pink, follow your SillyTavern theme, or pin any installed one. | Pink |
-| 📱 **[Mobile tree editor](#-the-tree-editor-on-mobile)** | A **Move to…** button, so assigning entries works without drag-and-drop. | — |
+- **[Color themes](#-color-themes-adjusting-the-picture)** — `TunnelVision pink`
+  Keep the original palette, follow your SillyTavern theme, or pin any installed
+  one.
+
+- **[Mobile tree editor](#-the-tree-editor-on-mobile)** — always on
+  A **Move to…** button, so assigning entries works without drag-and-drop.
 
 ### 📱 The tree editor on mobile
 
@@ -420,6 +453,8 @@ SillyTavern's own command bar: `/tv-search`, `/tv-remember`, `/tv-summarize`,
 `/tv-forget`, `/tv-merge`, `/tv-split`, `/tv-ingest`, and `/tv-dedupe` —
 which batch-merges every near-duplicate in a lorebook in one pass.
 
+#### 📥 Chat Ingest
+
 Ingest also has a panel in settings with a message range and an **Include hidden
 messages** toggle. Messages carrying a ghost icon in chat are hidden from the
 prompt, so ingest skips them by default — turn it on when older messages were
@@ -478,14 +513,22 @@ name. It's self-contained: TunnelVision never borrows your SillyTavern
 connection profile or exposes your other API keys, and only this one key is
 stored. There's a connection test button next to it.
 
-Two jobs, switched on separately:
+It has two jobs, switched on separately.
 
-| Job | When it runs | What it does |
-|-----|-------------|--------------|
-| 📡 **Auto-Retrieve Before Generation** | Before your chat model sees the prompt | Reads a collapsed view of the channel guide, picks the relevant nodes, injects their entries. Your chat model can still search on top of this. |
-| ✍️ **Auto-Write After Generation** | After the reply lands | Reviews the turn and decides what to remember, update, merge, summarize or forget — capped at **Max Operations Per Turn**. |
+#### 📡 Auto-Retrieve Before Generation
 
-An **Embedding Sidecar** can be configured separately, for semantic duplicate
+Runs before your chat model sees the prompt. Reads a collapsed view of the
+channel guide, picks the relevant nodes and injects their entries. Your chat
+model can still call Search on top of this.
+
+#### ✍️ Auto-Write After Generation
+
+Runs after the reply lands. Reviews the turn and decides what to remember,
+update, merge, summarize or forget — capped at **Max Operations Per Turn**.
+
+#### 🧬 Embedding Sidecar
+
+A separate endpoint, configured on its own, for semantic duplicate
 detection rather than the trigram check. Embeddings are cached to IndexedDB and
 recomputed only when an entry's content actually changes.
 
