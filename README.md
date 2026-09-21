@@ -1088,14 +1088,28 @@ A few things worth knowing before you open one:
 TunnelVision was created and maintained by **Coneja-Chibi** as a RoleCall
 project — the concept, the architecture and the voice of these docs are theirs.
 
-It grew collaboratively from there. Contributions have come from **mozophe**,
-**tobitus**, **DrMagisto**, **phampyk**, **erratos**, **fluxtendu** and
-**[J3tze](https://github.com/J3tze/TunnelVision)**, whose `feat/theme-options`
-work is the entire [Color Themes](#-color-themes-adjusting-the-picture) feature.
+It grew collaboratively from there:
 
-`git shortlog -sn` gives the current commit breakdown, but it under-credits: the
-theme work was brought across by cherry-pick and lost its original authorship in
-the process, so J3tze does not appear there at all.
+- **mozophe** — Create Chat Lorebook, the mobile tree editor, per-chat lorebook
+  selection, the self-contained sidecar and embedding config, snapshot undo, OOC
+  handling, and the swipe and deletion fixes.
+- **tobitus** — the summary system: collapsing summarized messages behind their
+  summary, writing summaries as constant entries, keeping the opening and live
+  scene out of them, and summarizing without host function calling.
+- **DrMagisto** — exposed the rolling world state, smart context, memory
+  lifecycle and post-turn processor settings in the UI, plus staging-compat fixes
+  to swipe detection, snapshotting and background-task lifecycle.
+- **[J3tze](https://github.com/J3tze/TunnelVision)** — the whole
+  [Color Themes](#-color-themes-adjusting-the-picture) feature.
+- **erratos** — a batch of eight fixes across `tool_choice`, slash commands, the
+  post-turn processor, imports and auto-hide.
+- **phampyk** — floating-button viewport and stylesheet fixes.
+- **fluxtendu** — skipping tool-format conversion on SillyTavern's native Claude
+  backend.
+
+`git shortlog -sn` gives the current commit breakdown, but it under-credits:
+J3tze's theme work was brought across by cherry-pick and lost its original
+authorship, so they do not appear there at all.
 
 The original repository and its companion RAG extension, VectHare, went offline
 when that account's repositories were removed, so links to them no longer resolve.
