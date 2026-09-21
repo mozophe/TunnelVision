@@ -55,6 +55,11 @@ Section links point into [README.md](README.md), which explains each feature in 
   verbose entries and rebalances the tree. — *Coneja-Chibi*
 - **[Output Language](README.md#-output-language)** *(auto)* — forces all generated
   content into one language regardless of the conversation's. — *Coneja-Chibi*
+- **Summaries collapse the messages they cover** *(on)* — once a scene is
+  summarized, the messages it covers are hidden behind it and drop out of the
+  prompt while staying readable on screen. Summaries are written as constant
+  entries so they always reach the model, the opening and the live scene are kept
+  out of them, and a marker is posted in chat at the end of the range covered. — *tobitus*
 
 #### Control and safety
 
@@ -97,6 +102,12 @@ Section links point into [README.md](README.md), which explains each feature in 
 - **[Token housekeeping](README.md#-token-housekeeping)** — compact tool prompts,
   ephemeral tool results, selective retrieval, a combined injection budget, and a
   toggle to hide tool-call messages from the chat log. — *Coneja-Chibi*
+- **Rolling world state, smart context, memory lifecycle and post-turn processor
+  became configurable from the UI** — the subsystems existed but had no settings
+  exposed, so they could not be turned on or tuned without editing code. — *DrMagisto*
+- **The advanced settings panel is navigable** — collapsible sections and
+  categories, a filter box with a clear button, and a home for the sections that
+  belonged nowhere. — *tobitus*
 
 ### Changed
 
@@ -126,6 +137,17 @@ Section links point into [README.md](README.md), which explains each feature in 
   section after enabling a lorebook. Auto-detect help text shows `{{char}}` again. — *mozophe*
 - **OpenRouter calls no longer carry the user's SillyTavern origin header.** — *mozophe*
 - **Transient sidecar timeouts no longer disable the sidecar for the session.** — *mozophe*
+- **A batch of eight fixes** across `tool_choice` double-wrapping, slash commands,
+  the post-turn processor, imports and auto-hide; plus skipping tool-format
+  conversion on SillyTavern's native Claude backend, which was being converted
+  when it should have been passed through. — *erratos*
+- **Staging-compat regressions** in swipe detection, snapshotting and the
+  background-task lifecycle. — *DrMagisto*
+- **The static-entry guard is honoured on lifecycle and post-turn writes,** which
+  had bypassed it and could rewrite constant entries. — *tobitus*
+- **Remember deduplicates on meaning rather than character overlap,** and the
+  sidecar accepts an empty API key for local endpoints that don't need one. — *tobitus*
+- **The floating button renders correctly on mobile viewports.** — *phampyk*
 - **The mobile stylesheet actually applies.** Its media query sat above the rules it
   targeted, so 33 declarations were silently losing to them — the sidebar never hid
   and inputs stayed at 13px, making iOS zoom on every tap. — *mozophe*
