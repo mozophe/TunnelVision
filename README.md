@@ -1089,10 +1089,13 @@ TunnelVision was created and maintained by **Coneja-Chibi** as a RoleCall
 project — the concept, the architecture and the voice of these docs are theirs.
 
 It grew collaboratively from there. Contributions have come from **mozophe**,
-**tobitus**, **DrMagisto**, **phampyk**, **erratos** and **fluxtendu**.
+**tobitus**, **DrMagisto**, **phampyk**, **erratos**, **fluxtendu** and
+**[J3tze](https://github.com/J3tze/TunnelVision)**, whose `feat/theme-options`
+work is the entire [Color Themes](#-color-themes-adjusting-the-picture) feature.
 
-For the current breakdown, run `git shortlog -sn` — it stays accurate as the
-project moves, which a hand-maintained list won't.
+`git shortlog -sn` gives the current commit breakdown, but it under-credits: the
+theme work was brought across by cherry-pick and lost its original authorship in
+the process, so J3tze does not appear there at all.
 
 The original repository and its companion RAG extension, VectHare, went offline
 when that account's repositories were removed, so links to them no longer resolve.
