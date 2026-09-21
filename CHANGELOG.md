@@ -8,7 +8,7 @@ TunnelVision has no tagged releases. This file records the difference between th
 current code and the March 2026 snapshot (`da28e58`) that this fork's GitHub
 parent points at after the original `Coneja-Chibi/TunnelVision` was taken down.
 
-That's 216 commits, from several people. Each entry below names who built it;
+Those changes came from several people. Each entry below names who built it;
 [Credits](README.md#-credits) has the full list with links. The original author's
 own development continued until August 2026 and is included here.
 

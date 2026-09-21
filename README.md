@@ -21,8 +21,8 @@
 >
 > With the original gone, this fork's parent on GitHub is now a March 2026
 > snapshot (`da28e58`). It's a genuine ancestor of this history — every commit in
-> it is here — but it stops 216 commits short of current. Don't mistake it for a
-> live upstream; there isn't one.
+> it is here — but it stops well short of current, and falls further behind with
+> every commit. Don't mistake it for a live upstream; there isn't one.
 >
 > **[CHANGELOG.md](CHANGELOG.md)** records everything since that snapshot: work
 > done here, the original author's development up to August 2026, and several
