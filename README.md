@@ -19,126 +19,39 @@
 >
 > GitHub re-rooted the fork network onto a March 2026 snapshot, so anything still
 > pointing at "upstream" now resolves to a version roughly 200 commits behind.
-> **[What's New](#-whats-new)** below is the difference from that snapshot — five
+> **[CHANGELOG.md](CHANGELOG.md)** records the difference from that snapshot — five
 > months of the original author's continued development plus this repository's own
 > contributions, not a list of changes made here.
 
-## 🆕 What's New
+## ✨ Highlights
 
-Everything below is new relative to the March 2026 snapshot the fork network is
-now rooted on, grouped by what it actually does. Most of it is **off by default**
-— TunnelVision behaves as the older docs describe until you switch something on.
+TunnelVision's core loop is unchanged: your AI browses a tree index of your
+lorebook and retrieves what it decides it needs. What's newer, and all optional:
 
-**First, the thing several of these depend on:** the
-**[Sidecar LLM](#-sidecar-llm-a-second-set-of-eyes)** *(off)* is a second model
-with its own endpoint and key, separate from your chat model. It does the
-lorebook legwork cheaply while your expensive model writes prose. Anything marked
-🧩 below needs it configured.
+- **[A sidecar LLM](#-sidecar-llm-a-second-set-of-eyes)** does the lorebook work on
+  a second, cheaper model — retrieving before your chat model runs, and writing
+  after it — so your expensive model spends its tokens on prose.
+- **[Smart Context](#-smart-context-the-pre-roll)** and
+  **[Rolling World State](#-rolling-world-state-the-station-ident)** keep the
+  obvious context present without the AI spending a tool call to fetch it.
+- **[A background processor](#-post-turn-processor-the-night-shift)** extracts
+  facts, archives scenes and updates trackers after each reply, with
+  **[periodic defrag](#-memory-lifecycle-defragmenting-the-archive)** to stop long
+  stories bloating the lorebook.
+- **[Delete or swipe a message and its lorebook writes are reversed](#-undo-on-delete--swipe-the-rewind)**,
+  so autonomous memory can't quietly keep what you rejected.
+- **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** let a
+  character's own lore stay read-only while the chat lorebook takes the writes.
+- **[SECRET tags](#-secret-tags-dramatic-irony)** mark what a character doesn't
+  know yet, so the AI writes around it instead of blurting it out.
 
-#### 📥 Getting context in
-
-- **[Auto-Retrieve Before Generation](#-auto-retrieve-before-generation)** — `off` · needs 🧩
-  The sidecar reads the channel guide and injects the relevant entries before
-  your chat model runs.
-
-- **[Smart Context](#-smart-context-the-pre-roll)** — `off`
-  Injects the entries your recent messages actually mention. No LLM call — fast
-  local matching.
-
-- **[Rolling World State](#-rolling-world-state-the-station-ident)** — `off`
-  One living document of where the story stands, refreshed periodically and
-  injected every turn.
-
-- **[Narrative Conditionals](#-narrative-conditionals-conditional-channels)** — `on`
-  `[emotion:…]` and `[location:…]` tags on entry keywords, judged against the
-  scene rather than the literal word.
-
-#### ✍️ Keeping the lorebook current
-
-- **[Auto-Write After Generation](#-auto-write-after-generation)** — `off` · needs 🧩
-  The sidecar reviews each turn and decides what to remember, update, merge,
-  summarize or forget.
-
-- **[Post-Turn Processor](#-post-turn-processor-the-night-shift)** — `off`
-  Extracts facts, detects scene changes, archives the scene that ended, updates
-  trackers.
-
-- **[Memory Lifecycle](#-memory-lifecycle-defragmenting-the-archive)** — `off`
-  Periodic defrag — merges near-duplicates, compresses verbose entries,
-  rebalances the tree.
-
-- **[Output Language](#-output-language)** — `auto`
-  Forces everything TunnelVision writes into one language.
-
-#### 🛡️ Keeping automation in check
-
-- **[Undo on delete & swipe](#-undo-on-delete--swipe-the-rewind)** — `on`
-  Delete or swipe a message and the lorebook writes it caused are reversed.
-
-- **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** — `read + write`
-  Read + Write, Read Only or Write Only, per lorebook — plus sidecar vs native
-  injection.
-
-- **[SECRET tags](#-secret-tags-dramatic-irony)** — `on`
-  Marks what a character doesn't know yet, so the AI writes around it instead of
-  blurting it out.
-
-- **Swipe handling** — `on`
-  The writer runs on swipes, discards its output if the message changed mid-run,
-  and re-runs for a swipe that lands mid-run.
-
-#### 🚀 Setting up and getting through the day
-
-- **[Create Chat Lorebook](#step-2-set-up-a-chat-)** — one button
-  Makes a lorebook, attaches it to the chat, enables it, and offers to bring in
-  Character Lore read-only.
-
-- **[Chat Ingest reads hidden messages](#-chat-ingest)** — `off`
-  An **Include hidden messages** toggle, image and video skipping, and a live
-  count of what will be read.
-
-- **[Token housekeeping](#-token-housekeeping)** — `on`
-  Compact tool prompts, ephemeral results, selective retrieval and one combined
-  injection budget.
-
-#### 🎨 Interface
-
-- **[Color themes](#-color-themes-adjusting-the-picture)** — `TunnelVision pink`
-  Keep the original palette, follow your SillyTavern theme, or pin any installed
-  one.
-
-- **[Mobile tree editor](#-the-tree-editor-on-mobile)** — always on
-  A **Move to…** button, so assigning entries works without drag-and-drop.
-
-### 📱 The tree editor on mobile
-
-Three things were in the way, and only the first was a missing feature.
-
-**Assignment needed a non-drag path.** Every entry row now has a **Move to…**
-button that opens a flat, indented list of every category; tap one and the entry
-moves. It shows on desktop too, where it beats dragging across the panel on a
-deep tree. Drag-and-drop is untouched for anyone who prefers it.
-
-**The layout fought the screen.** The sidebar and the main panel were stacked,
-so every move meant tapping a node at the top, scrolling past the whole tree to
-reach its entries, then scrolling back up. The main panel was already a
-drill-down navigator — the breadcrumb walks up, the child cards walk down — so
-the sidebar is now hidden below 768px and the panel gets the full height with a
-single scroll region. Unassigned entries, previously reachable only from the
-sidebar, appear as a card on the root.
-
-**The mobile stylesheet had never actually applied.** A media query adds no
-specificity, so its rules only win by coming later in the file — and this block
-sat *above* almost everything it targeted. 33 declarations were silently losing
-to the very rules they existed to override: the sidebar never hid, inputs stayed
-at 13px (so iOS zoomed on every tap and never zoomed back), and none of the
-enlarged touch targets were real. Moving the block to the end of `style.css`
-fixed all of them at once, which is why it now carries a comment saying it has to
-stay there.
+Nearly all of this ships **off by default**. See **[CHANGELOG.md](CHANGELOG.md)**
+for the full list of what changed, and the [Features](#-features) section below for
+how each one works.
 
 ---
 
-### 💡 The Core Thesis
+## 💡 The Core Thesis
 
 > **When an AI has to make the active effort to retrieve information, to decide what it needs, go find it, and bring it back, it uses that information better.**
 
@@ -651,6 +564,34 @@ Put a tag like `[emotion:grief]`, `[location:the underground]`, `[timeOfDay:nigh
 `[mood:…]` or `[weather:…]` in an entry's keywords and the sidecar judges it
 against the actual scene during retrieval — not against whether the literal word
 appeared. An entry can be held back until the scene genuinely fits.
+
+### 📱 The tree editor on mobile
+
+Three things were in the way, and only the first was a missing feature.
+
+**Assignment needed a non-drag path.** Every entry row now has a **Move to…**
+button that opens a flat, indented list of every category; tap one and the entry
+moves. It shows on desktop too, where it beats dragging across the panel on a
+deep tree. Drag-and-drop is untouched for anyone who prefers it.
+
+**The layout fought the screen.** The sidebar and the main panel were stacked,
+so every move meant tapping a node at the top, scrolling past the whole tree to
+reach its entries, then scrolling back up. The main panel was already a
+drill-down navigator — the breadcrumb walks up, the child cards walk down — so
+the sidebar is now hidden below 768px and the panel gets the full height with a
+single scroll region. Unassigned entries, previously reachable only from the
+sidebar, appear as a card on the root.
+
+**The mobile stylesheet had never actually applied.** A media query adds no
+specificity, so its rules only win by coming later in the file — and this block
+sat *above* almost everything it targeted. 33 declarations were silently losing
+to the very rules they existed to override: the sidebar never hid, inputs stayed
+at 13px (so iOS zoomed on every tap and never zoomed back), and none of the
+enlarged touch targets were real. Moving the block to the end of `style.css`
+fixed all of them at once, which is why it now carries a comment saying it has to
+stay there.
+
+---
 
 ### 🎨 **Color Themes** *(Adjusting the Picture)*
 
