@@ -14,9 +14,10 @@
 > ℹ️ **About this repository.** TunnelVision started at `Coneja-Chibi/TunnelVision`
 > and was actively maintained there until it was taken down in September 2026,
 > along with its open pull requests. This repository carries the work forward and
-> is where development continues. The original concept, architecture and the voice
-> of these docs are Coneja-Chibi's; much of what's here since has come from other
-> contributors through pull requests — see [Credits](#-credits).
+> is where development continues. The original concept and architecture are
+> Coneja-Chibi's, as is much of the prose below. The features, settings and
+> troubleshooting documented since have come from several
+> [contributors](#-credits).
 >
 > GitHub re-rooted the fork network onto a March 2026 snapshot, so anything still
 > pointing at "upstream" now resolves to a version roughly 200 commits behind.
