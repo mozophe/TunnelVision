@@ -14,8 +14,9 @@
 > ℹ️ **About this repository.** TunnelVision started at `Coneja-Chibi/TunnelVision`
 > and was actively maintained there until it was taken down in September 2026,
 > along with its open pull requests. This repository carries the work forward and
-> is where development continues. The design and most of this documentation are
-> the original author's.
+> is where development continues. The original concept, architecture and the voice
+> of these docs are Coneja-Chibi's; much of what's here since has come from other
+> contributors through pull requests — see [Credits](#-credits).
 >
 > GitHub re-rooted the fork network onto a March 2026 snapshot, so anything still
 > pointing at "upstream" now resolves to a version roughly 200 commits behind.
@@ -1082,13 +1083,24 @@ A few things worth knowing before you open one:
 - Autonomous write paths must never modify **constant** entries. `entry-protection.js`
   holds that guard — keep new write paths going through it.
 
+## 🙌 Credits
+
+TunnelVision was created by **Coneja-Chibi** as a RoleCall project — the concept,
+the architecture and the voice of these docs are theirs. It has been a
+collaborative project since, built by contributors sending pull requests:
+
+**Coneja-Chibi**, **mozophe**, **tobitus**, **phampyk**, **DrMagisto**,
+**erratos** and **fluxtendu**.
+
+For the current breakdown, run `git shortlog -sn` — it stays accurate as the
+project moves, which a hand-maintained list won't.
+
+The original repository and its companion RAG extension, VectHare, went offline
+when that account's repositories were removed, so links to them no longer resolve.
+
 ## 📄 License
 
 GPL-3.0. See [LICENSE](LICENSE).
-
-TunnelVision was created by Coneja-Chibi as a RoleCall project. The original
-repository and its companion RAG extension, VectHare, went offline when that
-account's repositories were removed, so links to them no longer resolve.
 
 ---
 
