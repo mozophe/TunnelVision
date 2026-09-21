@@ -778,7 +778,7 @@ That's it. TunnelVision registers its tools automatically. Your AI will start us
 | 🫥 Auto-hide summarized messages | ✅ On | Collapse covered messages behind their summary |
 | 🔍 Duplicate Detection | ❌ Off | Similarity check on Remember |
 | 📊 Embedding threshold | 0.85 | Cosine similarity — same meaning |
-| 📊 Trigram threshold | 0.85 | Character overlap — nearly the same string; wants a lower value than the embedding threshold |
+| 📊 Trigram threshold | 0.6 | Character overlap — nearly the same string; wants a lower value than the embedding threshold |
 | ⚖️ On duplicate | Warn | Warn and save anyway, or decline and tell the AI to update |
 
 ### Sidecars *(off by default)*
