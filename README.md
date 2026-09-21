@@ -1085,12 +1085,11 @@ A few things worth knowing before you open one:
 
 ## 🙌 Credits
 
-TunnelVision was created by **Coneja-Chibi** as a RoleCall project — the concept,
-the architecture and the voice of these docs are theirs. It has been a
-collaborative project since, built by contributors sending pull requests:
+TunnelVision was created and maintained by **Coneja-Chibi** as a RoleCall
+project — the concept, the architecture and the voice of these docs are theirs.
 
-**Coneja-Chibi**, **mozophe**, **tobitus**, **phampyk**, **DrMagisto**,
-**erratos** and **fluxtendu**.
+It grew collaboratively from there. Contributions have come from **mozophe**,
+**tobitus**, **DrMagisto**, **phampyk**, **erratos** and **fluxtendu**.
 
 For the current breakdown, run `git shortlog -sn` — it stays accurate as the
 project moves, which a hand-maintained list won't.
