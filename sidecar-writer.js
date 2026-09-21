@@ -1054,6 +1054,15 @@ export async function executeWriteOps(ops, reasoning = '', origin) {
 
     for (const op of safeOps) {
         try {
+            // A delete/swipe during this loop runs revertInvalidSnapshots(), which
+            // restores what we have written so far and drops our key. Anything we
+            // wrote after that point would have no snapshot to revert it, so stop.
+            if (!turnSnapshots.has(snapshotKey)) {
+                console.log('[TunnelVision] Sidecar writer: snapshot reverted mid-run — stopping writes');
+                results.push('SKIP: source message removed mid-run — remaining writes abandoned');
+                break;
+            }
+
             // Check confirmation if the user has it enabled for this tool type
             const toolName = OP_TO_TOOL[op.type];
             if (toolName) {

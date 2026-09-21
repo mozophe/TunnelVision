@@ -43,11 +43,11 @@ vi.mock('../llm-sidecar.js', () => ({
     getSidecarModelLabel: vi.fn(() => ''),
 }));
 vi.mock('../tools/remember.js', () => ({ getDefinition: vi.fn() }));
-vi.mock('../tools/update.js', () => ({ getDefinition: vi.fn() }));
-vi.mock('../tools/summarize.js', () => ({ getDefinition: vi.fn() }));
-vi.mock('../tools/forget.js', () => ({ getDefinition: vi.fn() }));
-vi.mock('../tools/reorganize.js', () => ({ getDefinition: vi.fn() }));
-vi.mock('../tools/merge-split.js', () => ({ getDefinition: vi.fn() }));
+vi.mock('../tools/update.js', () => ({ getDefinition: vi.fn(() => ({ action: vi.fn() })) }));
+vi.mock('../tools/summarize.js', () => ({ getDefinition: vi.fn(() => ({ action: vi.fn() })) }));
+vi.mock('../tools/forget.js', () => ({ getDefinition: vi.fn(() => ({ action: vi.fn() })) }));
+vi.mock('../tools/reorganize.js', () => ({ getDefinition: vi.fn(() => ({ action: vi.fn() })) }));
+vi.mock('../tools/merge-split.js', () => ({ getDefinition: vi.fn(() => ({ action: vi.fn() })) }));
 vi.mock('../agent-utils.js', () => ({
     applyBackgroundPromptAddendum: vi.fn(),
     buildLanguageDirective: vi.fn(() => ''),
@@ -57,7 +57,8 @@ vi.mock('../agent-utils.js', () => ({
 import { getContext } from '../../../st-context.js';
 import { deleteWorldInfoEntry, loadWorldInfo, saveWorldInfo } from '../../../world-info.js';
 import { logSnapshotRevert } from '../activity-feed.js';
-import { resolveTargetBook } from '../tool-registry.js';
+import { checkToolConfirmation, resolveTargetBook } from '../tool-registry.js';
+import { getDefinition as getRememberDefinition } from '../tools/remember.js';
 import {
     cleanInvalidSidecarMemories,
     excludeStaticWriteOps,
@@ -375,6 +376,33 @@ describe('write ops guard against a mid-run swipe', () => {
         await executeWriteOps(OPS, '', originFor(message)).catch(() => {});
 
         expect(loadWorldInfo).toHaveBeenCalled();
+    });
+
+    it('abandons the remaining ops when a deletion reverts the snapshot mid-loop', async () => {
+        const message = { [MESSAGE_ID_FIELD]: 'tvmsg_deleted', mes: 'original response' };
+        const ctx = makeContext({}, [message]);
+        getContext.mockReturnValue(ctx);
+        resolveTargetBook.mockReturnValue({ book: 'Book' });
+        loadWorldInfo.mockResolvedValue({ entries: {} });
+        checkToolConfirmation.mockResolvedValue(true);
+
+        const action = vi.fn(async () => {
+            // The user deletes the source message while op 1 is in flight; the
+            // MESSAGE_DELETED handler's revert pass runs and drops our snapshot.
+            ctx.chat.length = 0;
+            await revertInvalidSnapshots();
+            return 'ok';
+        });
+        getRememberDefinition.mockReturnValue({ action });
+
+        const twoOps = [
+            { type: 'remember', lorebook: 'Book', title: 'A', content: 'C', keys: ['k'] },
+            { type: 'remember', lorebook: 'Book', title: 'B', content: 'C', keys: ['k'] },
+        ];
+        const result = await executeWriteOps(twoOps, '', originFor(message));
+
+        expect(action).toHaveBeenCalledTimes(1);
+        expect(result.results.some(line => line.includes('removed mid-run'))).toBe(true);
     });
 });
 

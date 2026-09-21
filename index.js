@@ -279,7 +279,11 @@ async function onChatChanged() {
     // One-time migration of the legacy global selection into this chat's metadata.
     // Active-book guard ensures a stale cross-character book is never copied.
     migrateSelectedLorebook(getActiveTunnelVisionBooks());
-    // Catch slash command deletions (like /cut) which might not emit MESSAGE_DELETED
+    // Catch slash command deletions (like /cut) which might not emit MESSAGE_DELETED.
+    // revertInvalidSnapshots() first: cleanInvalidSidecarMemories() only removes
+    // created entries, so without it an update whose source message vanished
+    // outside the MESSAGE_DELETED handler would never be restored.
+    await revertInvalidSnapshots();
     await cleanInvalidSidecarMemories();
     // refreshUI + guarded registerTools (autoDetect re-run inside is idempotent)
     await refreshRuntimeState('chat changed');
