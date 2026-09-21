@@ -615,7 +615,7 @@ One-click diagnostic panel that checks **everything**:
 Paste this URL into SillyTavern's "Install Extension" input:
 
 ```
-https://github.com/mozophe/TunnelVision
+https://github.com/mozophe/TunnelVision.git
 ```
 
 ### Step 2: Set Up a Chat 📡
