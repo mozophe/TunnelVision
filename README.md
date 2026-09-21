@@ -1126,10 +1126,18 @@ It grew collaboratively from there:
   and skipping tool-format conversion on SillyTavern's native Claude backend.
 - **[phampyk](https://github.com/phampyk)** — floating-button viewport and
   stylesheet fixes.
+- **[aobmax](https://github.com/aobmax)** — the Anthropic tool format conversion
+  layer.
 
-`git shortlog -sn` gives the current commit breakdown, but it under-credits:
-J3tze's theme work was brought across by cherry-pick and lost its original
-authorship, so they do not appear there at all.
+**And others.** Upstream squash-merged its pull requests, which replaces the
+author with the merger, and that repository has since been deleted — so some of
+the work here is credited to whoever merged it rather than whoever wrote it. If
+you're missing from this list, say so and it gets fixed.
+
+`git shortlog -sn` gives the current commit breakdown, but don't read it as a
+credit list: J3tze's theme work and aobmax's conversion layer were both brought
+across by cherry-pick and lost their authorship, and squash-merged pull requests
+are recorded against whoever merged them.
 
 The original repository and its companion RAG extension, VectHare, went offline
 when that account's repositories were removed, so links to them no longer resolve.
