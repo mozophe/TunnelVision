@@ -34,9 +34,9 @@ Section links point into [README.md](README.md), which explains each feature in 
   — a single living document of the current scene, recent events, active threads
   and character states, refreshed every N messages and injected every turn.
 - **[Narrative Conditionals](README.md#-narrative-conditionals-conditional-channels)**
-  *(on)* — `[emotion:…]`, `[mood:…]`, `[timeOfDay:…]`, `[location:…]` and
-  `[weather:…]` tags on entry keywords, evaluated against the scene during
-  retrieval rather than matched literally.
+  *(on)* — eight condition tags on entry keywords (`emotion`, `mood`, `timeOfDay`,
+  `location`, `weather`, `activity`, `relationship` and free-form), evaluated
+  against the scene during retrieval rather than matched literally.
 - **[Embedding Sidecar](README.md#-embedding-sidecar)** *(off)* — a separate
   endpoint for semantic similarity, cached to IndexedDB and recomputed only when
   an entry's content changes.
