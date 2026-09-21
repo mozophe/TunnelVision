@@ -28,6 +28,8 @@ import { resetSearchLoopTracker, resetSelectiveRetrievalTracker } from './tools/
 import { buildNotebookPrompt, resetNotebookWriteGuard } from './tools/notebook.js';
 import { flushPendingSummaryHide } from './tools/summarize.js';
 import { bindUIEvents, refreshUI } from './ui-controller.js';
+import { applyTheme } from './theme.js';
+import { initThemeUI } from './theme-entry.js';
 import { initActivityFeed } from './activity-feed.js';
 import { initCommands } from './commands.js';
 import { initAutoSummary } from './auto-summary.js';
@@ -80,8 +82,9 @@ globalThis.TunnelVision_generateInterceptor = function (_chat, _contextSize, abo
 };
 
 async function init() {
-    // Ensure settings exist
-    getSettings();
+    // Apply persisted theme before rendering to avoid a branded-color flash.
+    const initialSettings = getSettings();
+    applyTheme(initialSettings.colorTheme);
 
     // Render settings panel
     const settingsHtml = $(await renderExtensionTemplateAsync(EXTENSION_FOLDER, 'settings'));
@@ -92,6 +95,9 @@ async function init() {
         console.error('[TunnelVision] Could not find extensions_settings2 container');
         return;
     }
+
+    // Populate and bind the Color Theme select now that the panel exists.
+    initThemeUI();
 
     // Bind UI events
     bindUIEvents();
