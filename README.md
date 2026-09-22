@@ -543,13 +543,14 @@ Two things have changed since this was only a trigram check. With an **Embedding
 
 ### 🤫 **SECRET Tags** *(Dramatic Irony)*
 
-Prefix an entry's content with `[SECRET — Marcus is unaware]` and the AI treats
-it as narrator-only knowledge: it won't let Marcus reveal, act on or acknowledge
-the information until the story establishes he's learned it. Characters not named
-in the tag are unaffected.
+Prefix an entry's content with `[SECRET — known to: Elena, the King]` and the AI
+treats it as narrator-only knowledge: only the listed characters may reveal, act on
+or acknowledge it; everyone else behaves as if they don't know. When only one or two
+characters are in the dark, `[SECRET — hidden from: Marcus]` works the other way
+round. The older `[SECRET — Marcus is unaware]` form is still understood.
 
-The write tools apply the tag themselves when the chat shows someone doesn't know
-something, and **remove it** once the story establishes they've found out.
+The write tools apply the tag themselves when the chat shows who knows something,
+add names as characters find out, and **remove it** once it's no longer a secret.
 
 > ⚠️ **This is a storytelling device, not access control.** Tagged content is
 > still sent to the model and to your API provider in full. It shapes how the

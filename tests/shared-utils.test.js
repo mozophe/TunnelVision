@@ -519,12 +519,17 @@ describe('secret tag', () => {
         expect(SECRET_AUTHORING_INSTRUCTION).toContain('not privacy or access control');
     });
 
-    it('authoring instruction defines <who> as the character who does not know it', () => {
-        // Regression: the model filled <who> with the entry's subject, producing
-        // "[SECRET — B is unaware]" for a fact only A is ignorant of, and tagging
-        // facts a character already knows.
-        expect(SECRET_AUTHORING_INSTRUCTION).toContain('does NOT know');
-        expect(SECRET_AUTHORING_INSTRUCTION).toContain('not the character the entry is about');
-        expect(SECRET_AUTHORING_INSTRUCTION).toContain('[SECRET — Marcus is unaware]');
+    it('authoring instruction uses the known-to form with hidden-from as the exception', () => {
+        // The "<who> is unaware" form drifted to "<who> is aware", which the old
+        // guard then read backwards. Listing knowers matches how the model writes.
+        expect(SECRET_AUTHORING_INSTRUCTION).toContain('[SECRET — known to: Elena, the King]');
+        expect(SECRET_AUTHORING_INSTRUCTION).toContain('DOES know');
+        expect(SECRET_AUTHORING_INSTRUCTION).toContain('[SECRET — hidden from: <names>]');
+    });
+
+    it('guard line reads both polarities, including legacy tags', () => {
+        for (const phrase of ['known to:', 'is aware', 'hidden from:', 'is unaware']) {
+            expect(SECRET_GUARD_LINE).toContain(phrase);
+        }
     });
 });

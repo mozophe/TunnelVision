@@ -293,29 +293,32 @@ export function nextFreeName(base, taken) {
 }
 
 // ── Secret-tag convention ────────────────────────────────────────
-// Entries tagged [SECRET …] guide roleplay when a character has not yet
-// learned the information. The tag is not privacy or access control: injected
-// content remains visible to the model and provider. See docs/superpowers/specs/2026-07-17-secret-tag-convention-design.md
+// Entries tagged [SECRET …] guide roleplay when only some characters know the
+// information. Canonical form lists who knows: [SECRET — known to: A, B].
+// "hidden from:" and the older "<who> is unaware" form stay valid, and the guard
+// reads either polarity literally. The tag is not privacy or access control:
+// injected content remains visible to the model and provider.
+// See docs/superpowers/specs/2026-07-17-secret-tag-convention-design.md
 
 /** Matches the opening of a [SECRET …] tag. No `g` flag → stateless .test(). */
 export const SECRET_TAG_RE = /\[SECRET\b/i;
 
 /** Standing rule injected above smart context when a tagged entry is present. */
 export const SECRET_GUARD_LINE =
-    '[Roleplay guidance: some retrieved entries use [SECRET …] for information a character does not yet know. ' +
+    '[Roleplay guidance: some retrieved entries use [SECRET …] for information not every character knows. ' +
     'This tag does not hide content from the model or provide privacy/access control. ' +
-    'Treat them as narrator-only dramatic irony — do not let the character named in the tag reveal, act on, or ' +
-    "acknowledge the information until the story establishes they've learned it. Characters not named in the tag " +
-    'are unaffected and may know it.]';
+    'Treat them as narrator-only dramatic irony and read each tag literally. ' +
+    '"known to: A, B" or "A is aware" means ONLY those characters know it — every other character must not ' +
+    'reveal, act on, or acknowledge it. "hidden from: C" or "C is unaware" means only C does not know it; ' +
+    "others may. This holds until the story establishes a character has learned it.]";
 
 /** Appended to write-tool content descriptions so the model applies/removes the tag. */
 export const SECRET_AUTHORING_INSTRUCTION =
-    ' For roleplay guidance only (not privacy or access control), if information is unknown to a character ' +
-    '(secrets, dramatic irony, things not yet learned), ' +
-    'prefix the content with [SECRET — <who> is unaware]. <who> is the character who does NOT know the ' +
-    'information — not the character the entry is about, unless they are the same person. ' +
-    "Example: Elena is secretly the heir and Marcus has not learned this, so the entry about Elena's " +
-    'heritage reads [SECRET — Marcus is unaware] Elena is the lost heir. ' +
-    'Tag only when the chat shows that character does not know it; never tag information a character already ' +
-    'has, and if in doubt omit the tag. ' +
-    'When the story establishes the character has learned it, update the entry to remove the tag.';
+    ' For roleplay guidance only (not privacy or access control), if information is known to only some ' +
+    'characters (secrets, dramatic irony, things not yet learned), prefix the content with ' +
+    '[SECRET — known to: <names>], listing every character who DOES know it; anyone not listed is treated as ' +
+    "unaware. Example: only Elena and the King know Elena is the lost heir, so the entry reads " +
+    '[SECRET — known to: Elena, the King] Elena is the lost heir. ' +
+    'If nearly everyone knows and only one or two characters do not, use [SECRET — hidden from: <names>] instead. ' +
+    'Tag only when the chat shows who knows it; if in doubt omit the tag. ' +
+    'When another character learns it, update the list; once it is no longer a secret, remove the tag.';
