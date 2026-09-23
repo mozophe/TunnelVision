@@ -57,6 +57,19 @@ On top of [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVisi
   are reverted; the lorebook list refreshes without a page reload; the mobile
   stylesheet actually applies.
 
+Already merged upstream from this fork:
+
+- **Self-contained sidecar and embedding config, per-chat lorebook selection,
+  resilient undo and cleanup, activity feed and dedup improvements**
+  ([#31](https://github.com/Coneja-Chibi/TunnelVision/pull/31))
+- **SECRET tags** ([#32](https://github.com/Coneja-Chibi/TunnelVision/pull/32)), and naming the right character in them
+  ([#39](https://github.com/Coneja-Chibi/TunnelVision/pull/39))
+- **The sidecar no longer latches off after a transient failure**, and swipes no
+  longer leak the rejected reply into retrieval ([#33](https://github.com/Coneja-Chibi/TunnelVision/pull/33))
+- **Stopping a sidecar retrieval stops the reply with it** ([#46](https://github.com/Coneja-Chibi/TunnelVision/pull/46))
+- **OOC turns read the lorebook but never write to it** ([#48](https://github.com/Coneja-Chibi/TunnelVision/pull/48))
+- **OpenRouter calls no longer carry the user's SillyTavern origin** ([#49](https://github.com/Coneja-Chibi/TunnelVision/pull/49))
+
 ---
 
 ## 💡 The Core Thesis
