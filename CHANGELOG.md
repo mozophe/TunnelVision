@@ -60,3 +60,22 @@ Section links point into [README.md](README.md), which explains each feature in 
   ([#51](https://github.com/Coneja-Chibi/TunnelVision/pull/51)). Its media query sat
   above the rules it targeted, so 33 declarations were silently losing to them —
   the sidebar never hid and inputs stayed at 13px, making iOS zoom on every tap.
+
+## Merged upstream
+
+Work from this fork that is now in upstream `main`, so it isn't listed above.
+
+- **2026-08-20** — [#49](https://github.com/Coneja-Chibi/TunnelVision/pull/49) OpenRouter calls no longer carry the user's
+  SillyTavern origin header.
+- **2026-08-20** — [#48](https://github.com/Coneja-Chibi/TunnelVision/pull/48) OOC turns read the lorebook but never write to it.
+- **2026-08-20** — [#46](https://github.com/Coneja-Chibi/TunnelVision/pull/46) Stopping generation cancels a sidecar retrieval
+  and stops the reply with it.
+- **2026-07-28** — [#39](https://github.com/Coneja-Chibi/TunnelVision/pull/39) SECRET tags name the character who doesn't know,
+  not the one the entry is about.
+- **2026-07-20** — [#33](https://github.com/Coneja-Chibi/TunnelVision/pull/33) The sidecar no longer latches off after a transient
+  failure, and a swipe no longer feeds the rejected reply into retrieval.
+- **2026-07-18** — [#32](https://github.com/Coneja-Chibi/TunnelVision/pull/32) SECRET tags: mark lorebook information some
+  characters don't know, so the AI writes around it.
+- **2026-07-14** — [#31](https://github.com/Coneja-Chibi/TunnelVision/pull/31) Self-contained sidecar and embedding config
+  (replacing connection profiles), per-chat lorebook selection, resilient undo and
+  cleanup of sidecar writes, activity feed fixes, and dedup improvements.
