@@ -720,14 +720,16 @@ Paste this URL into SillyTavern's "Install Extension" input:
 https://github.com/mozophe/TunnelVision.git
 ```
 
-### Step 2: Set Up the Sidecar 🧩 *(recommended, optional)*
+### Step 2: Turn It On and Set Up the Sidecar 🧩
 
-Skip this and everything still works. Without a sidecar, TunnelVision's own
-background LLM calls (tree building, summaries, ingest) go through your current
-SillyTavern API, which means your chat model. A sidecar sends them to a cheaper,
-faster model instead, and it's needed for auto-retrieve and auto-write. Do it
-before setting up a chat, so ingest and **With LLM** tree building in step 3
-use it too.
+**🔧 Enable Master Toggle**: Switch on **Enable TunnelVision** in Extension Settings.
+
+The sidecar is recommended but optional: skip it and everything still works.
+Without a sidecar, TunnelVision's own background LLM calls (tree building,
+summaries, ingest) go through your current SillyTavern API, which means your
+chat model. A sidecar sends them to a cheaper, faster model instead, and it's
+needed for auto-retrieve and auto-write. Do it before setting up a chat, so
+ingest and **With LLM** tree building in step 3 use it too.
 
 1. **🔌 Connect**: Under **Advanced → Sidecars → Sidecar LLM**, switch on
    **Enable Sidecar LLM**. Enter the endpoint, pick the format (OpenAI-compatible,
@@ -742,18 +744,17 @@ use it too.
 
 ### Step 3: Set Up a Chat 📡
 
-1. **🔧 Enable Master Toggle**: Switch on **Enable TunnelVision** in Extension Settings.
-2. **🪄 Create Chat Lorebook**: Open a chat and click **Create Chat Lorebook**
+1. **🪄 Create Chat Lorebook**: Open a chat and click **Create Chat Lorebook**
    under *Lorebook Selection*. It suggests a name (`TV - <character>`, then
    `TV - <character> 2`, …), creates the lorebook, attaches it to this chat, turns
    TunnelVision on for it and selects it. Every memory TunnelVision saves in
    this chat goes here. The button is greyed out if the chat already has a chat
    lorebook, since SillyTavern allows only one.
    When it's done, a **"TV - &lt;character&gt; is ready"** toast confirms the
-   setup and lists any Character Lore it switched on (step 3). In a chat that
+   setup and lists any Character Lore it switched on (item 2). In a chat that
    already has messages, the toast stays open with a **Next steps** list for
-   step 4 until you close it.
-3. **📖 Character Lore** *(only if the character has lorebooks linked via the
+   item 3 until you close it.
+2. **📖 Character Lore** *(only if the character has lorebooks linked via the
    globe button, e.g. an embedded lorebook you imported)*: the same popup
    offers to use them with TunnelVision as well. Leave them ticked — they're set to
    **Read Only**, so the AI can search the character's lore but never writes chat
@@ -769,13 +770,13 @@ use it too.
    - **Later**: select the lorebook in TunnelVision's lorebook list and use its **Build Tree Index** section yourself
    
    The tree is saved per lorebook, so later chats with the same character reuse it.
-4. **📥 Existing chat?** With the new lorebook selected, click **Ingest Messages**
+3. **📥 Existing chat?** With the new lorebook selected, click **Ingest Messages**
    under **Chat Ingest** to pull facts out of the chat so far. Then, under
    **Build Tree Index**, click **From Metadata** (free) or **With LLM** (better
    categories, costs tokens).
    A brand-new chat needs neither — its lorebook starts with an empty tree and fills
    up as you play.
-5. **✅ Run Diagnostics**: Click "Run Diagnostics" to verify everything is green.
+4. **✅ Run Diagnostics**: Click "Run Diagnostics" to verify everything is green.
 
 **Doing it by hand:** attach any lorebook to the chat with SillyTavern's
 passport icon in the character panel (click it and pick the lorebook; once a lorebook
