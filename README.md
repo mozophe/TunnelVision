@@ -44,8 +44,9 @@
 On top of [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision)
 `main`. **[CHANGELOG.md](CHANGELOG.md)** has the details and upstream PR links.
 
-- **[Create Chat Lorebook](#step-2-set-up-a-chat-)** — one button creates a
-  lorebook, attaches it to the chat, enables TunnelVision for it and selects it.
+- **[Create Chat Lorebook](#step-2-set-up-a-chat-)** — one-click chat setup: it
+  creates a lorebook, attaches it to the chat, enables TunnelVision for it and
+  selects it.
 - **[Tree editor on a phone](#-the-tree-editor-on-mobile)** — a **Move to…**
   button replaces drag-and-drop, and the sidebar collapses on narrow screens.
 - **[Chat Ingest reads hidden messages](#-chat-ingest)** *(off)* — an option to
