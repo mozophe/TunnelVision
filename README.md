@@ -2,31 +2,21 @@
 
 *Stop making your AI guess what to remember. Give it a remote control and let it browse.* 🐰
 
-[![Status: Active Development](https://img.shields.io/badge/Status-Active%20Development-blueviolet.svg)](https://github.com/mozophe/TunnelVision)
+[![Status: Active Development](https://img.shields.io/badge/Status-Active%20Development-blueviolet.svg)](https://github.com/Coneja-Chibi/TunnelVision)
 [![SillyTavern Extension](https://img.shields.io/badge/SillyTavern-Extension-blue.svg)](https://docs.sillytavern.app/)
 [![BunnyMo Compatible](https://img.shields.io/badge/BunnyMo-Compatible-pink.svg)](https://docs.sillytavern.app/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.svg)](LICENSE)
 
-*Originally a RoleCall project by Coneja-Chibi, built for the SillyTavern community as a proof of concept.* 🐇
+*A [RoleCall](https://github.com/Coneja-Chibi) project, built for the SillyTavern community as a proof of concept.* 🐇
 
 ---
 
-> ℹ️ **About this repository.** TunnelVision started at `Coneja-Chibi/TunnelVision`
-> and was actively maintained there until it was taken down in September 2026,
-> along with its open pull requests. This repository carries the work forward and
-> is where development continues. The original concept and architecture are
-> Coneja-Chibi's, as is much of the prose below. The features, settings and
-> troubleshooting documented since have come from several
-> [contributors](#-credits).
+> ⚠️ **This is a fork** of [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision).
+> The original concept and architecture are Coneja-Chibi's, as is much of the
+> prose below. The features, settings and troubleshooting documented since have
+> come from several [contributors](#-credits).
 >
-> With the original gone, this fork's parent on GitHub is now a March 2026
-> snapshot (`da28e58`). It's a genuine ancestor of this history — every commit in
-> it is here — but it stops well short of current, and falls further behind with
-> every commit. Don't mistake it for a live upstream; there isn't one.
->
-> **[CHANGELOG.md](CHANGELOG.md)** records everything since that snapshot: work
-> done here, the original author's development up to August 2026, and several
-> other contributors' along the way.
+> **[CHANGELOG.md](CHANGELOG.md)** records what this fork adds.
 
 ## 📑 Contents
 
@@ -1132,18 +1122,14 @@ It grew collaboratively from there:
 
 **And others.** Pull requests to the original repository were squash-merged, which
 records the person who merged them as the author — and since it was Coneja-Chibi's
-repository, that was always Coneja-Chibi. The repository has since been deleted,
-so those pull requests can no longer be read to find out who actually wrote what.
-Some of the work credited above to Coneja-Chibi is very likely someone else's. If
-that someone is you, open an issue and it gets fixed.
+repository, that was always Coneja-Chibi. Some of the work git credits to
+Coneja-Chibi is very likely someone else's. If that someone is you, open an issue
+and it gets fixed.
 
 `git shortlog -sn` gives the current commit breakdown, but don't read it as a
 credit list: J3tze's theme work and aobmax's conversion layer were both brought
 across by cherry-pick and lost their authorship, and squash-merged pull requests
 are recorded against Coneja-Chibi, who merged them.
-
-The original repository and its companion RAG extension, VectHare, went offline
-when that account's repositories were removed, so links to them no longer resolve.
 
 ## 📄 License
 

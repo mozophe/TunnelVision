@@ -8,14 +8,14 @@ TunnelVision has no releases or version tags, and doesn't need them: SillyTavern
 installs an extension from a repository URL and a branch, so you always get the
 current tip rather than a tagged version. This file records the difference between
 that tip and the March 2026 snapshot (`da28e58`) this fork's GitHub parent points
-at, after the original `Coneja-Chibi/TunnelVision` was taken down.
+at. Much of it is also in
+[Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision), whose
+own development continued until August 2026 and is included here.
 
 Those changes came from several people — see [Credits](README.md#-credits).
 Entries aren't attributed individually: pull requests to the original repository
 were squash-merged and so are recorded against Coneja-Chibi, who owned it and
-merged them, and that repository is gone — so for much of this history the person
-who actually wrote a change can't be recovered. The original author's
-own development continued until August 2026 and is included here.
+merged them. The pull requests themselves show who wrote what.
 
 Section links point into [README.md](README.md), which explains each feature in full.
 
