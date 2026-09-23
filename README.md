@@ -14,11 +14,8 @@
 > ⚠️ **This is a fork** of [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision).
 > The original concept and architecture are Coneja-Chibi's, as is much of the
 > prose below. The features, settings and troubleshooting documented since have
-> come from several [contributors](#-credits).
->
-> This fork adds Create Chat Lorebook, a tree editor that works on a phone, Chat
-> Ingest for hidden messages, and several fixes; **[CHANGELOG.md](CHANGELOG.md)**
-> has the list.
+> come from several [contributors](#-credits). See
+> [What This Fork Changes](#-what-this-fork-changes).
 
 ## 📑 Contents
 
@@ -26,7 +23,7 @@
 
 | | |
 |---|---|
-| [✨ Highlights](#-highlights) | The main features, in six bullets |
+| [🆕 What This Fork Changes](#-what-this-fork-changes) | What differs from upstream |
 | [💡 The Core Thesis](#-the-core-thesis) | Why active retrieval beats injection |
 | [📺 What the Hell is TunnelVision?](#-what-the-hell-is-tunnelvision) | The pitch |
 | [🧠 Why This is Better](#-why-this-is-better-the-memory-problem) | The memory problem |
@@ -42,30 +39,22 @@
 
 ---
 
-## ✨ Highlights
+## 🆕 What This Fork Changes
 
-TunnelVision's core loop is unchanged: your AI browses a tree index of your
-lorebook and retrieves what it decides it needs. Around that, all optional:
+On top of [Coneja-Chibi/TunnelVision](https://github.com/Coneja-Chibi/TunnelVision)
+`main`. **[CHANGELOG.md](CHANGELOG.md)** has the details and upstream PR links.
 
-- **[A sidecar LLM](#-sidecar-llm-a-second-set-of-eyes)** does the lorebook work on
-  a second, cheaper model — retrieving before your chat model runs, and writing
-  after it — so your expensive model spends its tokens on prose.
-- **[Smart Context](#-smart-context-the-pre-roll)** and
-  **[Rolling World State](#-rolling-world-state-the-station-ident)** keep the
-  obvious context present without the AI spending a tool call to fetch it.
-- **[A background processor](#-post-turn-processor-the-night-shift)** extracts
-  facts, archives scenes and updates trackers after each reply, with
-  **[periodic defrag](#-memory-lifecycle-defragmenting-the-archive)** to stop long
-  stories bloating the lorebook.
-- **[Delete or swipe a message and its lorebook writes are reversed](#-undo-on-delete--swipe-the-rewind)**,
-  so autonomous memory can't quietly keep what you rejected.
-- **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** let a
-  character's own lore stay read-only while the chat lorebook takes the writes.
-- **[SECRET tags](#-secret-tags-dramatic-irony)** mark which characters know
-  something, so the rest are written around it instead of blurting it out.
-
-Nearly all of this ships **off by default**. The [Features](#-features) section
-below explains how each one works.
+- **[Create Chat Lorebook](#step-2-set-up-a-chat-)** — one button creates a
+  lorebook, attaches it to the chat, enables TunnelVision for it and selects it.
+- **[Tree editor on a phone](#-the-tree-editor-on-mobile)** — a **Move to…**
+  button replaces drag-and-drop, and the sidebar collapses on narrow screens.
+- **[Chat Ingest reads hidden messages](#-chat-ingest)** *(off)* — an option to
+  ingest messages hidden from context, skipping images and videos.
+- **[SECRET tags](#-secret-tags-dramatic-irony) list who knows**, not who doesn't,
+  so the guard no longer silences the one character in on it.
+- **Fixes:** swipes are memorized; lorebook writes stranded by a deleted message
+  are reverted; the lorebook list refreshes without a page reload; the mobile
+  stylesheet actually applies.
 
 ---
 
