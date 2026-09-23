@@ -16,7 +16,9 @@
 > prose below. The features, settings and troubleshooting documented since have
 > come from several [contributors](#-credits).
 >
-> **[CHANGELOG.md](CHANGELOG.md)** records what this fork adds.
+> This fork adds Create Chat Lorebook, a tree editor that works on a phone, Chat
+> Ingest for hidden messages, and several fixes; **[CHANGELOG.md](CHANGELOG.md)**
+> has the list.
 
 ## 📑 Contents
 
@@ -24,7 +26,7 @@
 
 | | |
 |---|---|
-| [✨ Highlights](#-highlights) | What's new, in six bullets |
+| [✨ Highlights](#-highlights) | The main features, in six bullets |
 | [💡 The Core Thesis](#-the-core-thesis) | Why active retrieval beats injection |
 | [📺 What the Hell is TunnelVision?](#-what-the-hell-is-tunnelvision) | The pitch |
 | [🧠 Why This is Better](#-why-this-is-better-the-memory-problem) | The memory problem |
@@ -43,7 +45,7 @@
 ## ✨ Highlights
 
 TunnelVision's core loop is unchanged: your AI browses a tree index of your
-lorebook and retrieves what it decides it needs. What's newer, and all optional:
+lorebook and retrieves what it decides it needs. Around that, all optional:
 
 - **[A sidecar LLM](#-sidecar-llm-a-second-set-of-eyes)** does the lorebook work on
   a second, cheaper model — retrieving before your chat model runs, and writing
@@ -59,12 +61,11 @@ lorebook and retrieves what it decides it needs. What's newer, and all optional:
   so autonomous memory can't quietly keep what you rejected.
 - **[Per-lorebook permissions](#-per-lorebook-permissions--injection-modes)** let a
   character's own lore stay read-only while the chat lorebook takes the writes.
-- **[SECRET tags](#-secret-tags-dramatic-irony)** mark what a character doesn't
-  know yet, so the AI writes around it instead of blurting it out.
+- **[SECRET tags](#-secret-tags-dramatic-irony)** mark which characters know
+  something, so the rest are written around it instead of blurting it out.
 
-Nearly all of this ships **off by default**. See **[CHANGELOG.md](CHANGELOG.md)**
-for the full list of what changed, and the [Features](#-features) section below for
-how each one works.
+Nearly all of this ships **off by default**. The [Features](#-features) section
+below explains how each one works.
 
 ---
 
