@@ -766,7 +766,25 @@ and use **Build Tree Index**.
 `TV - {{char}}` and any lorebook whose name contains `TV - <character>` is
 switched on automatically — you only have to attach it.
 
-### Step 3: Start Chatting 💬
+### Step 3: Set Up the Sidecar 🧩 *(recommended, optional)*
+
+Skip this and everything still works. Without a sidecar, TunnelVision's own
+background LLM calls (tree building, summaries, ingest) go through your current
+SillyTavern API, which means your chat model. A sidecar sends them to a cheaper,
+faster model instead, and it's needed for auto-retrieve and auto-write.
+
+1. **🔌 Connect**: Under **Advanced → Sidecars → Sidecar LLM**, switch on
+   **Enable Sidecar LLM**. Enter the endpoint, pick the format (OpenAI-compatible,
+   Anthropic or Google), and add the API key and model name. Then click
+   **Test Connection**.
+2. **📡 Pick its jobs**: Enabling the sidecar only sets up the connection. Switch on
+   **Auto-Retrieve Before Generation** and **Auto-Write After Generation** to
+   give it work. See [Sidecar LLM](#-sidecar-llm-a-second-set-of-eyes).
+3. **🧬 Embedding Sidecar** *(optional)*: Under **Advanced → Sidecars → Embedding
+   Sidecar**, enter an embeddings endpoint and click **Test Connection**. Duplicate
+   detection then compares entries by meaning instead of by trigrams.
+
+### Step 4: Start Chatting 💬
 
 That's it. TunnelVision registers its tools automatically. Your AI will start using Search, Remember, Summarize, etc. as the conversation flows.
 
