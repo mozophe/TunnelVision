@@ -788,13 +788,6 @@ faster model instead, and it's needed for auto-retrieve and auto-write.
 
 That's it. TunnelVision registers its tools automatically. Your AI will start using Search, Remember, Summarize, etc. as the conversation flows.
 
-**Optional power moves:**
-- Turn on **Mandatory Tools** to force the AI to search every single turn
-- Set up **Auto-Summary** to periodically create scene summaries
-- Use **!commands** to manually trigger tools when you want specific actions
-- Create **Tracker entries** for things the AI should constantly monitor and update
-- Use `!remember` with a description to collaborate with the AI on designing tracker schemas
-
 ---
 
 ## ⚙ Settings Reference
